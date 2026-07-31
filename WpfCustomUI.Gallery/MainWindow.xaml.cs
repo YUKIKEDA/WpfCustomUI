@@ -12,6 +12,7 @@ namespace WpfCustomUI.Gallery
             ("Inputs & Buttons", () => new InputsPage()),
             ("Navigation & Menus", () => new NavigationPage()),
             ("NumericBox & Expander", () => new NumericPage()),
+            ("PropertyGrid", () => new PropertyGridPage()),
         ];
 
         public MainWindow()

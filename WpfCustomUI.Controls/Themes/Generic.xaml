@@ -8,5 +8,6 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <ResourceDictionary.MergedDictionaries>
         <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/NumericBox.xaml" />
+        <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/PropertyGrid.xaml" />
     </ResourceDictionary.MergedDictionaries>
 </ResourceDictionary>

@@ -1,0 +1,129 @@
+<!--
+    PropertyGrid の既定スタイルと、型別 PropertyItem の暗黙エディタ DataTemplate 群。
+    アプリ独自のエディタは「PropertyItem 派生クラス+DataTemplate」を追加すれば
+    同じ仕組みで自動選択される(spec 6.2)。
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:wcu="clr-namespace:WpfCustomUI.Controls">
+
+    <!-- ================= エディタ(暗黙 DataTemplate) ================= -->
+
+    <DataTemplate DataType="{x:Type wcu:NumericPropertyItem}">
+        <wcu:NumericBox Value="{Binding Value, Mode=TwoWay}"
+                        Minimum="{Binding Minimum}"
+                        Maximum="{Binding Maximum}"
+                        Increment="{Binding Increment}"
+                        Unit="{Binding Unit}"
+                        UnitProvider="{Binding UnitProvider}"
+                        Format="{Binding Format}"
+                        IsReadOnly="{Binding IsReadOnly}" />
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type wcu:TextPropertyItem}">
+        <TextBox Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                 IsReadOnly="{Binding IsReadOnly}" />
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type wcu:BoolPropertyItem}">
+        <CheckBox IsChecked="{Binding Value, Mode=TwoWay}"
+                  IsEnabled="{Binding IsEditable}"
+                  VerticalAlignment="Center" />
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type wcu:ChoicePropertyItem}">
+        <ComboBox ItemsSource="{Binding Choices}"
+                  SelectedItem="{Binding Value, Mode=TwoWay}"
+                  IsEnabled="{Binding IsEditable}" />
+    </DataTemplate>
+
+    <!-- ================= PropertyGrid 本体 ================= -->
+
+    <Style TargetType="{x:Type wcu:PropertyGrid}">
+        <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Surface.Panel}" />
+        <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Primary}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Border.Default}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type wcu:PropertyGrid}">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{DynamicResource Wcu.CornerRadius}">
+                        <DockPanel>
+                            <Grid x:Name="FilterArea" DockPanel.Dock="Top" Margin="4">
+                                <TextBox Text="{Binding FilterText, RelativeSource={RelativeSource TemplatedParent}, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock x:Name="FilterPlaceholderText"
+                                           Text="{TemplateBinding FilterPlaceholder}"
+                                           Foreground="{DynamicResource Wcu.Brush.Text.Disabled}"
+                                           Margin="6,0"
+                                           VerticalAlignment="Center"
+                                           IsHitTestVisible="False"
+                                           Visibility="Collapsed" />
+                            </Grid>
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+                                <ItemsControl ItemsSource="{TemplateBinding ItemsView}"
+                                              Focusable="False"
+                                              Margin="0,0,0,4">
+                                    <ItemsControl.GroupStyle>
+                                        <GroupStyle>
+                                            <GroupStyle.ContainerStyle>
+                                                <Style TargetType="{x:Type GroupItem}">
+                                                    <Setter Property="Template">
+                                                        <Setter.Value>
+                                                            <ControlTemplate TargetType="{x:Type GroupItem}">
+                                                                <Expander Header="{Binding Name}"
+                                                                          IsExpanded="True"
+                                                                          Margin="4,4,4,0">
+                                                                    <ItemsPresenter />
+                                                                </Expander>
+                                                            </ControlTemplate>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </Style>
+                                            </GroupStyle.ContainerStyle>
+                                        </GroupStyle>
+                                    </ItemsControl.GroupStyle>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,1" Background="Transparent"
+                                                  ToolTip="{Binding Description}">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="2*" />
+                                                    <ColumnDefinition Width="3*" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Name}"
+                                                           VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Margin="0,0,8,0" />
+                                                <ContentControl Grid.Column="1"
+                                                                Content="{Binding}"
+                                                                IsTabStop="False"
+                                                                HorizontalContentAlignment="Stretch" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </DockPanel>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="ShowFilterBox" Value="False">
+                            <Setter TargetName="FilterArea" Property="Visibility" Value="Collapsed" />
+                        </Trigger>
+                        <Trigger Property="FilterText" Value="{x:Null}">
+                            <Setter TargetName="FilterPlaceholderText" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                        <Trigger Property="FilterText" Value="">
+                            <Setter TargetName="FilterPlaceholderText" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+</ResourceDictionary>

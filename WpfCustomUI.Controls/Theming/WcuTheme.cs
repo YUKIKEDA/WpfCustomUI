@@ -27,6 +27,9 @@ public class WcuTheme : ResourceDictionary
         "Controls/Slider.xaml",
         "Controls/ProgressBar.xaml",
         "Controls/Expander.xaml",
+        // 暗黙 DataTemplate(エディタ選択)はアプリのリソースツリーから
+        // 確実に見つかるよう、Generic.xaml とは別にここでもマージする
+        "Controls/PropertyGrid.xaml",
     ];
 
     private WcuThemeVariant _theme;
