@@ -1,0 +1,52 @@
+<UserControl x:Class="WpfCustomUI.Gallery.Pages.ColorMapPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ui="https://schemas.wpfcustomui.dev/xaml"
+             mc:Ignorable="d">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+            <TextBlock Text="ColorMap 凡例" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,12" />
+
+            <TextBlock Text="コンタープレビュー(ColorScale.GetColor によるピクセル描画)"
+                       FontWeight="SemiBold" Margin="0,0,0,8" />
+            <StackPanel Orientation="Horizontal">
+                <Border BorderBrush="{DynamicResource Wcu.Brush.Border.Default}" BorderThickness="1"
+                        VerticalAlignment="Top">
+                    <Image x:Name="PreviewImage" Width="280" Height="200" Stretch="Fill" />
+                </Border>
+                <ui:ColorMapLegend x:Name="PreviewLegend"
+                                   Height="200"
+                                   Margin="16,0,0,0"
+                                   Title="応力 [MPa]" />
+                <StackPanel Margin="24,0,0,0" VerticalAlignment="Top">
+                    <TextBlock Text="カラーマップ" Margin="0,0,0,4" />
+                    <ComboBox x:Name="MapSelector" Width="140"
+                              DisplayMemberPath="Name"
+                              SelectionChanged="OnSettingsChanged" />
+                    <CheckBox x:Name="LogCheck" Content="対数スケール" Margin="0,12,0,0"
+                              Checked="OnSettingsChanged" Unchecked="OnSettingsChanged" />
+                    <TextBlock Text="離散レベル数(0 = 連続)" Margin="0,12,0,4" />
+                    <Slider x:Name="LevelSlider" Width="140" Minimum="0" Maximum="16"
+                            IsSnapToTickEnabled="True" TickFrequency="1"
+                            ValueChanged="OnSettingsChanged" />
+                    <TextBlock Margin="0,4,0,0"
+                               Foreground="{DynamicResource Wcu.Brush.Text.Secondary}"
+                               Text="{Binding ElementName=LevelSlider, Path=Value, StringFormat='レベル: {0:0}'}" />
+                    <TextBlock Margin="0,16,0,0" TextWrapping="Wrap" Width="180"
+                               Foreground="{DynamicResource Wcu.Brush.Text.Secondary}"
+                               Text="範囲外の値(Min 未満/Max 超過)はマゼンタ/白で表示している(BelowRangeColor / AboveRangeColor)。" />
+                </StackPanel>
+            </StackPanel>
+
+            <TextBlock Text="バリエーション" FontWeight="SemiBold" Margin="0,24,0,8" />
+            <StackPanel Orientation="Horizontal">
+                <ui:ColorMapLegend x:Name="LegendContinuous" Height="180" Title="連続 (Jet)" />
+                <ui:ColorMapLegend x:Name="LegendDiscrete" Height="180" Margin="24,0,0,0" Title="離散 10 分割" />
+                <ui:ColorMapLegend x:Name="LegendLog" Height="180" Margin="24,0,0,0" Title="対数 (1e-3〜1e3)" />
+                <ui:ColorMapLegend x:Name="LegendCoolwarm" Height="180" Margin="24,0,0,0" Title="Coolwarm (±50)" />
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

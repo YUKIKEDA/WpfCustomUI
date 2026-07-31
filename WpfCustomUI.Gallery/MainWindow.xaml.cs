@@ -14,6 +14,8 @@ namespace WpfCustomUI.Gallery
             ("NumericBox & Expander", () => new NumericPage()),
             ("PropertyGrid", () => new PropertyGridPage()),
             ("ModelTree", () => new ModelTreePage()),
+            ("ColorMap 凡例", () => new ColorMapPage()),
+            ("LogConsole & Progress", () => new LogConsolePage()),
         ];
 
         public MainWindow()
