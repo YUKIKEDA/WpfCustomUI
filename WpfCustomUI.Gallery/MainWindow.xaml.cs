@@ -16,6 +16,7 @@ namespace WpfCustomUI.Gallery
             ("ModelTree", () => new ModelTreePage()),
             ("ColorMap 凡例", () => new ColorMapPage()),
             ("LogConsole & Progress", () => new LogConsolePage()),
+            ("Shell", () => new ShellPage()),
         ];
 
         public MainWindow()

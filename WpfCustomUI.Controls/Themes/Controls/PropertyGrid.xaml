@@ -54,16 +54,11 @@
                             BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="{DynamicResource Wcu.CornerRadius}">
                         <DockPanel>
-                            <Grid x:Name="FilterArea" DockPanel.Dock="Top" Margin="4">
-                                <TextBox Text="{Binding FilterText, RelativeSource={RelativeSource TemplatedParent}, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock x:Name="FilterPlaceholderText"
-                                           Text="{TemplateBinding FilterPlaceholder}"
-                                           Foreground="{DynamicResource Wcu.Brush.Text.Disabled}"
-                                           Margin="6,0"
-                                           VerticalAlignment="Center"
-                                           IsHitTestVisible="False"
-                                           Visibility="Collapsed" />
-                            </Grid>
+                            <wcu:SearchBox x:Name="FilterArea"
+                                           DockPanel.Dock="Top"
+                                           Margin="4"
+                                           SearchText="{Binding FilterText, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                                           Placeholder="{TemplateBinding FilterPlaceholder}" />
                             <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
                                 <ItemsControl ItemsSource="{TemplateBinding ItemsView}"
                                               Focusable="False"
@@ -113,12 +108,6 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="ShowFilterBox" Value="False">
                             <Setter TargetName="FilterArea" Property="Visibility" Value="Collapsed" />
-                        </Trigger>
-                        <Trigger Property="FilterText" Value="{x:Null}">
-                            <Setter TargetName="FilterPlaceholderText" Property="Visibility" Value="Visible" />
-                        </Trigger>
-                        <Trigger Property="FilterText" Value="">
-                            <Setter TargetName="FilterPlaceholderText" Property="Visibility" Value="Visible" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

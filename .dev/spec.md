@@ -191,6 +191,6 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 | **Phase 3 — プロパティグリッド**                 | Phase 2 のエディタを利用                                                                                                                             | ✅ 完了 (2026-08-01) |
 | **Phase 4 — モデルツリー**                       | フラット化ツリー。ロジックのテスト重点                                                                                                               | ✅ 完了 (2026-08-01) |
 | **Phase 5 — 独立系**                             | ログコンソール / 進捗表示 / カラーマップ凡例(相互独立なので順不同)                                                                                   | ✅ 完了 (2026-08-01) |
-| **Phase 6 — シェル軽量群**                       | GridSplitter / GroupBox / Separator / ToolBar / StatusBar / SearchBox(+PropertyGrid フィルタ改修)                                                   | 未着手                |
+| **Phase 6 — シェル軽量群**                       | GridSplitter / GroupBox / Separator / ToolBar / StatusBar / SearchBox(+PropertyGrid フィルタ改修)                                                   | ✅ 完了 (2026-08-01) |
 | **Phase 7 — ウィンドウ系**                       | WcuWindow(クローム) / WcuDialogWindow / WcuMessageBox / ToastHost / BusyOverlay                                                                      | 未着手                |
 | **Phase 8 — DataGrid**                           | 標準 DataGrid のフルスタイル化(最大工数のため独立フェーズ)                                                                                          | 未着手                |

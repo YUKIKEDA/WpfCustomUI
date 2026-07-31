@@ -1,0 +1,205 @@
+<!--
+    ToolBar / ToolBarTray(spec 6.8.1)。標準 ToolBar のスタイル自作でオーバーフローメニュー対応を維持する。
+    ツールバー内のボタン類は ToolBar.ButtonStyleKey / ToggleButtonStyleKey / SeparatorStyleKey で
+    自動的にここのスタイルが適用される(このファイル単独で解決できるよう自己完結)。
+    ComboBox / TextBox 等をツールバーに置く場合はアプリ側で明示スタイル指定すること。
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ツールバー内アイコンボタンの共通ベース(ゴースト) -->
+    <Style x:Key="Wcu.ToolBar.ItemButtonBase" TargetType="{x:Type ButtonBase}">
+        <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Primary}" />
+        <Setter Property="Padding" Value="4" />
+        <Setter Property="MinWidth" Value="{DynamicResource Wcu.ControlHeight}" />
+        <Setter Property="MinHeight" Value="{DynamicResource Wcu.ControlHeight}" />
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ButtonBase}">
+                    <Border x:Name="Root"
+                            Background="Transparent"
+                            BorderThickness="1"
+                            BorderBrush="Transparent"
+                            CornerRadius="{DynamicResource Wcu.CornerRadius}"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{DynamicResource Wcu.Brush.Control.Hover}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{DynamicResource Wcu.Brush.Control.Pressed}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.4" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="{x:Static ToolBar.ButtonStyleKey}" TargetType="{x:Type Button}"
+           BasedOn="{StaticResource Wcu.ToolBar.ItemButtonBase}" />
+
+    <!-- トグル(表示切替等)。チェック中はアクセント淡色で状態を示す -->
+    <Style x:Key="{x:Static ToolBar.ToggleButtonStyleKey}" TargetType="{x:Type ToggleButton}"
+           BasedOn="{StaticResource Wcu.ToolBar.ItemButtonBase}">
+        <Style.Triggers>
+            <Trigger Property="IsChecked" Value="True">
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="{x:Type ButtonBase}">
+                            <Border x:Name="Root"
+                                    Background="{DynamicResource Wcu.Brush.Accent.Muted}"
+                                    BorderThickness="1"
+                                    BorderBrush="{DynamicResource Wcu.Brush.Accent.Default}"
+                                    CornerRadius="{DynamicResource Wcu.CornerRadius}"
+                                    Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Root" Property="Background" Value="{DynamicResource Wcu.Brush.Control.Hover}" />
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Opacity" Value="0.4" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ツールバー内の区切り線 -->
+    <Style x:Key="{x:Static ToolBar.SeparatorStyleKey}" TargetType="{x:Type Separator}">
+        <Setter Property="Margin" Value="3,4" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type Separator}">
+                    <Rectangle Width="1" Fill="{DynamicResource Wcu.Brush.Border.Default}" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 移動グリップ -->
+    <Style x:Key="Wcu.ToolBar.Thumb" TargetType="{x:Type Thumb}">
+        <Setter Property="Width" Value="8" />
+        <Setter Property="Cursor" Value="SizeAll" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type Thumb}">
+                    <Border Background="Transparent" Padding="3,4">
+                        <Rectangle Width="1" Fill="{DynamicResource Wcu.Brush.Border.Strong}" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- オーバーフローボタン(下向きシェブロン) -->
+    <Style x:Key="Wcu.ToolBar.OverflowButton" TargetType="{x:Type ToggleButton}">
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="ClickMode" Value="Press" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ToggleButton}">
+                    <Border x:Name="Root" Background="Transparent" Width="14">
+                        <Path Data="M 0,0 L 3,3 L 6,0"
+                              Stroke="{DynamicResource Wcu.Brush.Text.Secondary}"
+                              StrokeThickness="1.2"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{DynamicResource Wcu.Brush.Control.Hover}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{DynamicResource Wcu.Brush.Control.Pressed}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="Wcu.ToolBar" TargetType="{x:Type ToolBar}">
+        <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Surface.Panel}" />
+        <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Primary}" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ToolBar}">
+                    <Grid>
+                        <Border Background="{TemplateBinding Background}">
+                            <DockPanel>
+                                <Thumb x:Name="ToolBarThumb"
+                                       DockPanel.Dock="Left"
+                                       Style="{StaticResource Wcu.ToolBar.Thumb}" />
+                                <ToggleButton x:Name="OverflowButton"
+                                              DockPanel.Dock="Right"
+                                              Style="{StaticResource Wcu.ToolBar.OverflowButton}"
+                                              IsChecked="{Binding IsOverflowOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}" />
+                                <ToolBarPanel x:Name="PART_ToolBarPanel"
+                                              IsItemsHost="True"
+                                              Margin="2,1" />
+                            </DockPanel>
+                        </Border>
+                        <Popup x:Name="OverflowPopup"
+                               AllowsTransparency="True"
+                               Placement="Bottom"
+                               PlacementTarget="{Binding ElementName=OverflowButton}"
+                               IsOpen="{Binding IsOverflowOpen, RelativeSource={RelativeSource TemplatedParent}}"
+                               StaysOpen="False"
+                               Focusable="False">
+                            <Border Background="{DynamicResource Wcu.Brush.Surface.Elevated}"
+                                    BorderBrush="{DynamicResource Wcu.Brush.Border.Default}"
+                                    BorderThickness="1"
+                                    CornerRadius="{DynamicResource Wcu.CornerRadius}"
+                                    Padding="2"
+                                    Margin="0,2,4,4">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.4" />
+                                </Border.Effect>
+                                <ToolBarOverflowPanel x:Name="PART_ToolBarOverflowPanel"
+                                                      WrapWidth="200"
+                                                      Focusable="True"
+                                                      FocusVisualStyle="{x:Null}"
+                                                      KeyboardNavigation.TabNavigation="Cycle"
+                                                      KeyboardNavigation.DirectionalNavigation="Cycle" />
+                            </Border>
+                        </Popup>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="HasOverflowItems" Value="False">
+                            <Setter TargetName="OverflowButton" Property="Visibility" Value="Collapsed" />
+                        </Trigger>
+                        <Trigger Property="ToolBarTray.IsLocked" Value="True">
+                            <Setter TargetName="ToolBarThumb" Property="Visibility" Value="Collapsed" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.6" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="{x:Type ToolBar}" BasedOn="{StaticResource Wcu.ToolBar}" />
+
+    <Style x:Key="Wcu.ToolBarTray" TargetType="{x:Type ToolBarTray}">
+        <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Surface.Panel}" />
+    </Style>
+
+    <Style TargetType="{x:Type ToolBarTray}" BasedOn="{StaticResource Wcu.ToolBarTray}" />
+
+</ResourceDictionary>
