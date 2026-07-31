@@ -1,0 +1,82 @@
+<!--
+    Button スタイル。
+    状態別の色はテンプレートではなく Style.Triggers で変えることで、
+    バリアント(Wcu.Button.Accent)がトリガーの差し替えだけで作れるようにしている。
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Style x:Key="Wcu.Button" TargetType="{x:Type Button}">
+        <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Control.Background}" />
+        <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Primary}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Border.Default}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="12,2" />
+        <Setter Property="MinHeight" Value="{DynamicResource Wcu.ControlHeight}" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="FocusVisualStyle" Value="{DynamicResource Wcu.FocusVisual}" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type Button}">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{DynamicResource Wcu.CornerRadius}">
+                        <ContentPresenter Margin="{TemplateBinding Padding}"
+                                          HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                          RecognizesAccessKey="True" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Control.Hover}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Border.Strong}" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Control.Pressed}" />
+            </Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Border.Focus}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Disabled}" />
+                <Setter Property="Opacity" Value="0.6" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- 主要操作(実行・OK 等)用のアクセントボタン -->
+    <Style x:Key="Wcu.Button.Accent" TargetType="{x:Type Button}" BasedOn="{StaticResource Wcu.Button}">
+        <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Accent.Default}" />
+        <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.OnAccent}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Accent.Default}" />
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Accent.Hover}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Accent.Hover}" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Accent.Pressed}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Accent.Pressed}" />
+            </Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Text.OnAccent}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Disabled}" />
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Control.Background}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Border.Default}" />
+                <Setter Property="Opacity" Value="0.6" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style TargetType="{x:Type Button}" BasedOn="{StaticResource Wcu.Button}" />
+
+</ResourceDictionary>

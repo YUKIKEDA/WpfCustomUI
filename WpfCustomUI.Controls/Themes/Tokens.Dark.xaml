@@ -49,6 +49,11 @@
     <SolidColorBrush x:Key="Wcu.Brush.Text.Disabled" Color="{StaticResource Wcu.Color.Gray.500}" />
     <SolidColorBrush x:Key="Wcu.Brush.Text.OnAccent" Color="{StaticResource Wcu.Color.White}" />
 
+    <!-- Control(ボタン等の対話コントロールの面) -->
+    <SolidColorBrush x:Key="Wcu.Brush.Control.Background" Color="{StaticResource Wcu.Color.Gray.750}" />
+    <SolidColorBrush x:Key="Wcu.Brush.Control.Hover" Color="{StaticResource Wcu.Color.Gray.700}" />
+    <SolidColorBrush x:Key="Wcu.Brush.Control.Pressed" Color="{StaticResource Wcu.Color.Gray.600}" />
+
     <!-- Border -->
     <SolidColorBrush x:Key="Wcu.Brush.Border.Default" Color="{StaticResource Wcu.Color.Gray.700}" />
     <SolidColorBrush x:Key="Wcu.Brush.Border.Strong" Color="{StaticResource Wcu.Color.Gray.600}" />

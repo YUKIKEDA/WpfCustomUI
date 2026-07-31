@@ -1,0 +1,138 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Style x:Key="Wcu.Slider.Thumb" TargetType="{x:Type Thumb}">
+        <Setter Property="IsTabStop" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type Thumb}">
+                    <Border x:Name="Root"
+                            Width="12" Height="12"
+                            CornerRadius="6"
+                            Background="{DynamicResource Wcu.Brush.Accent.Default}" />
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{DynamicResource Wcu.Brush.Accent.Hover}" />
+                        </Trigger>
+                        <Trigger Property="IsDragging" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{DynamicResource Wcu.Brush.Accent.Pressed}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- トラックのページ移動ボタン(透明) -->
+    <Style x:Key="Wcu.Slider.PageButton" TargetType="{x:Type RepeatButton}">
+        <Setter Property="IsTabStop" Value="False" />
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type RepeatButton}">
+                    <Rectangle Fill="Transparent" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 進捗側(Decrease)はアクセント色のバーを描く -->
+    <Style x:Key="Wcu.Slider.DecreaseButton.Horizontal" TargetType="{x:Type RepeatButton}"
+           BasedOn="{StaticResource Wcu.Slider.PageButton}">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type RepeatButton}">
+                    <Grid Background="Transparent">
+                        <Border Height="4"
+                                VerticalAlignment="Center"
+                                CornerRadius="2"
+                                Background="{DynamicResource Wcu.Brush.Accent.Default}" />
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="Wcu.Slider.DecreaseButton.Vertical" TargetType="{x:Type RepeatButton}"
+           BasedOn="{StaticResource Wcu.Slider.PageButton}">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type RepeatButton}">
+                    <Grid Background="Transparent">
+                        <Border Width="4"
+                                HorizontalAlignment="Center"
+                                CornerRadius="2"
+                                Background="{DynamicResource Wcu.Brush.Accent.Default}" />
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="Wcu.Slider" TargetType="{x:Type Slider}">
+        <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Primary}" />
+        <Setter Property="FocusVisualStyle" Value="{DynamicResource Wcu.FocusVisual}" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type Slider}">
+                    <Grid MinHeight="18">
+                        <Border Height="4"
+                                VerticalAlignment="Center"
+                                CornerRadius="2"
+                                Background="{DynamicResource Wcu.Brush.Control.Hover}" />
+                        <Track x:Name="PART_Track">
+                            <Track.DecreaseRepeatButton>
+                                <RepeatButton Style="{StaticResource Wcu.Slider.DecreaseButton.Horizontal}"
+                                              Command="Slider.DecreaseLarge" />
+                            </Track.DecreaseRepeatButton>
+                            <Track.Thumb>
+                                <Thumb Style="{StaticResource Wcu.Slider.Thumb}" />
+                            </Track.Thumb>
+                            <Track.IncreaseRepeatButton>
+                                <RepeatButton Style="{StaticResource Wcu.Slider.PageButton}"
+                                              Command="Slider.IncreaseLarge" />
+                            </Track.IncreaseRepeatButton>
+                        </Track>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <Trigger Property="Orientation" Value="Vertical">
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="{x:Type Slider}">
+                            <Grid MinWidth="18">
+                                <Border Width="4"
+                                        HorizontalAlignment="Center"
+                                        CornerRadius="2"
+                                        Background="{DynamicResource Wcu.Brush.Control.Hover}" />
+                                <Track x:Name="PART_Track">
+                                    <Track.DecreaseRepeatButton>
+                                        <RepeatButton Style="{StaticResource Wcu.Slider.DecreaseButton.Vertical}"
+                                                      Command="Slider.DecreaseLarge" />
+                                    </Track.DecreaseRepeatButton>
+                                    <Track.Thumb>
+                                        <Thumb Style="{StaticResource Wcu.Slider.Thumb}" />
+                                    </Track.Thumb>
+                                    <Track.IncreaseRepeatButton>
+                                        <RepeatButton Style="{StaticResource Wcu.Slider.PageButton}"
+                                                      Command="Slider.IncreaseLarge" />
+                                    </Track.IncreaseRepeatButton>
+                                </Track>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.6" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style TargetType="{x:Type Slider}" BasedOn="{StaticResource Wcu.Slider}" />
+
+</ResourceDictionary>

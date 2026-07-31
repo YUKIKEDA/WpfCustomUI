@@ -1,0 +1,87 @@
+<UserControl x:Class="WpfCustomUI.Gallery.Pages.NavigationPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d">
+    <UserControl.Resources>
+        <Style x:Key="SectionHeader" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="{StaticResource Wcu.FontSize.L}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,16,0,8" />
+        </Style>
+    </UserControl.Resources>
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel MaxWidth="700" HorizontalAlignment="Left">
+
+            <TextBlock Text="Navigation &amp; Menus"
+                       FontSize="20" FontWeight="SemiBold" Margin="0,0,0,4" />
+
+            <TextBlock Text="Menu" Style="{StaticResource SectionHeader}" />
+            <Menu>
+                <MenuItem Header="ファイル(_F)">
+                    <MenuItem Header="新規プロジェクト(_N)" InputGestureText="Ctrl+N" />
+                    <MenuItem Header="開く(_O)..." InputGestureText="Ctrl+O" />
+                    <Separator />
+                    <MenuItem Header="最近使ったファイル">
+                        <MenuItem Header="bracket_static.wcu" />
+                        <MenuItem Header="housing_thermal.wcu" />
+                    </MenuItem>
+                    <Separator />
+                    <MenuItem Header="終了(_X)" InputGestureText="Alt+F4" />
+                </MenuItem>
+                <MenuItem Header="表示(_V)">
+                    <MenuItem Header="モデルツリー" IsCheckable="True" IsChecked="True" />
+                    <MenuItem Header="ログコンソール" IsCheckable="True" />
+                    <MenuItem Header="無効な項目" IsEnabled="False" />
+                </MenuItem>
+                <MenuItem Header="バージョン情報" />
+            </Menu>
+
+            <TextBlock Text="ContextMenu" Style="{StaticResource SectionHeader}" />
+            <Border Background="{DynamicResource Wcu.Brush.Surface.Panel}"
+                    BorderBrush="{DynamicResource Wcu.Brush.Border.Default}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource Wcu.CornerRadius}"
+                    Padding="16"
+                    HorizontalAlignment="Left">
+                <TextBlock Text="この領域を右クリック" Foreground="{DynamicResource Wcu.Brush.Text.Secondary}" />
+                <Border.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="表示" IsCheckable="True" IsChecked="True" />
+                        <MenuItem Header="非表示" />
+                        <Separator />
+                        <MenuItem Header="材料を割り当て">
+                            <MenuItem Header="Aluminum A5052" />
+                            <MenuItem Header="Steel SS400" />
+                        </MenuItem>
+                        <MenuItem Header="削除" InputGestureText="Del" />
+                    </ContextMenu>
+                </Border.ContextMenu>
+            </Border>
+
+            <TextBlock Text="TabControl" Style="{StaticResource SectionHeader}" />
+            <TabControl>
+                <TabItem Header="ジオメトリ">
+                    <TextBlock Text="ジオメトリ設定のコンテンツ" Margin="0,8" />
+                </TabItem>
+                <TabItem Header="メッシュ">
+                    <TextBlock Text="メッシュ設定のコンテンツ" Margin="0,8" />
+                </TabItem>
+                <TabItem Header="境界条件">
+                    <TextBlock Text="境界条件のコンテンツ" Margin="0,8" />
+                </TabItem>
+                <TabItem Header="無効" IsEnabled="False" />
+            </TabControl>
+
+            <TextBlock Text="ListBox + ScrollBar" Style="{StaticResource SectionHeader}" />
+            <ListBox x:Name="PartsList" Height="160" Width="280" HorizontalAlignment="Left" />
+
+            <TextBlock Text="ToolTip" Style="{StaticResource SectionHeader}" />
+            <Button Content="ホバーでツールチップ表示"
+                    HorizontalAlignment="Left"
+                    ToolTip="ヤング率 E = 205 GPa(SS400)" />
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

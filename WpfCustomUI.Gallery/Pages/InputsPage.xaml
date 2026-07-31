@@ -1,0 +1,86 @@
+<UserControl x:Class="WpfCustomUI.Gallery.Pages.InputsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d">
+    <UserControl.Resources>
+        <Style x:Key="SectionHeader" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="{StaticResource Wcu.FontSize.L}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,16,0,8" />
+        </Style>
+    </UserControl.Resources>
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel MaxWidth="700" HorizontalAlignment="Left">
+
+            <TextBlock Text="Inputs &amp; Buttons"
+                       FontSize="20" FontWeight="SemiBold" Margin="0,0,0,4" />
+
+            <TextBlock Text="Button" Style="{StaticResource SectionHeader}" />
+            <StackPanel Orientation="Horizontal">
+                <Button Content="Standard" Margin="0,0,8,0" />
+                <Button Content="Accent" Style="{DynamicResource Wcu.Button.Accent}" Margin="0,0,8,0" />
+                <Button Content="Disabled" IsEnabled="False" Margin="0,0,8,0" />
+                <Button Content="Accent Disabled" Style="{DynamicResource Wcu.Button.Accent}" IsEnabled="False" />
+            </StackPanel>
+
+            <TextBlock Text="CheckBox / RadioButton" Style="{StaticResource SectionHeader}" />
+            <StackPanel Orientation="Horizontal">
+                <StackPanel Margin="0,0,32,0">
+                    <CheckBox Content="Checked" IsChecked="True" Margin="0,2" />
+                    <CheckBox Content="Unchecked" Margin="0,2" />
+                    <CheckBox Content="Indeterminate" IsChecked="{x:Null}" IsThreeState="True" Margin="0,2" />
+                    <CheckBox Content="Disabled" IsChecked="True" IsEnabled="False" Margin="0,2" />
+                </StackPanel>
+                <StackPanel>
+                    <RadioButton Content="Option A" IsChecked="True" GroupName="Demo" Margin="0,2" />
+                    <RadioButton Content="Option B" GroupName="Demo" Margin="0,2" />
+                    <RadioButton Content="Disabled" IsEnabled="False" GroupName="Demo" Margin="0,2" />
+                </StackPanel>
+            </StackPanel>
+
+            <TextBlock Text="TextBox" Style="{StaticResource SectionHeader}" />
+            <StackPanel MaxWidth="320" HorizontalAlignment="Left">
+                <TextBox Text="編集可能なテキスト" Margin="0,2" />
+                <TextBox Text="読み取り専用" IsReadOnly="True" Margin="0,2" />
+                <TextBox Text="無効" IsEnabled="False" Margin="0,2" />
+                <TextBox Margin="0,2"
+                         ToolTipService.InitialShowDelay="200"
+                         Text="{Binding Thickness, ValidatesOnExceptions=True, UpdateSourceTrigger=PropertyChanged}" />
+                <TextBlock Text="↑ 板厚 [mm](0〜100 の範囲外を入力すると検証エラー: 赤枠+ツールチップ)"
+                           Foreground="{DynamicResource Wcu.Brush.Text.Secondary}"
+                           FontSize="{StaticResource Wcu.FontSize.S}" />
+            </StackPanel>
+
+            <TextBlock Text="ComboBox" Style="{StaticResource SectionHeader}" />
+            <StackPanel Orientation="Horizontal">
+                <ComboBox Width="180" SelectedIndex="0" Margin="0,0,8,0">
+                    <ComboBoxItem Content="構造解析(静解析)" />
+                    <ComboBoxItem Content="固有値解析" />
+                    <ComboBoxItem Content="熱伝導解析" />
+                    <ComboBoxItem Content="熱応力解析" />
+                </ComboBox>
+                <ComboBox Width="180" IsEditable="True" Text="編集可能" Margin="0,0,8,0">
+                    <ComboBoxItem Content="Aluminum A5052" />
+                    <ComboBoxItem Content="Steel SS400" />
+                    <ComboBoxItem Content="Titanium Ti-6Al-4V" />
+                </ComboBox>
+                <ComboBox Width="120" SelectedIndex="0" IsEnabled="False">
+                    <ComboBoxItem Content="無効" />
+                </ComboBox>
+            </StackPanel>
+
+            <TextBlock Text="Slider / ProgressBar" Style="{StaticResource SectionHeader}" />
+            <StackPanel MaxWidth="400" HorizontalAlignment="Left">
+                <Slider x:Name="DemoSlider" Minimum="0" Maximum="100" Value="40" Margin="0,2" />
+                <ProgressBar Value="{Binding ElementName=DemoSlider, Path=Value}" Margin="0,8,0,2" />
+                <ProgressBar x:Name="IndeterminateBar" IsIndeterminate="True" Margin="0,8,0,2" />
+                <CheckBox Content="不確定モード(IsIndeterminate)"
+                          IsChecked="{Binding ElementName=IndeterminateBar, Path=IsIndeterminate}"
+                          Margin="0,4" />
+            </StackPanel>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

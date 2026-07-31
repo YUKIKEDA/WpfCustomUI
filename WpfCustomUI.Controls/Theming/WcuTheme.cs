@@ -12,6 +12,22 @@ public class WcuTheme : ResourceDictionary
 {
     private const string ThemesBaseUri = "pack://application:,,,/WpfCustomUI.Controls;component/Themes/";
 
+    private static readonly string[] ControlDictionaries =
+    [
+        "Controls/Shared.xaml",
+        "Controls/Button.xaml",
+        "Controls/TextBox.xaml",
+        "Controls/CheckBox.xaml",
+        "Controls/ComboBox.xaml",
+        "Controls/ListBox.xaml",
+        "Controls/ScrollBar.xaml",
+        "Controls/TabControl.xaml",
+        "Controls/Menu.xaml",
+        "Controls/ToolTip.xaml",
+        "Controls/Slider.xaml",
+        "Controls/ProgressBar.xaml",
+    ];
+
     private WcuThemeVariant _theme;
     private bool _applied;
 
@@ -43,6 +59,13 @@ public class WcuTheme : ResourceDictionary
         MergedDictionaries.Clear();
         MergedDictionaries.Add(Load("Tokens.Core.xaml"));
         MergedDictionaries.Add(Load($"Tokens.{variant}.xaml"));
+
+        // コントロールスタイルはトークンを DynamicResource 参照するため、
+        // テーマバリアントに依存せず同じ辞書を使う。
+        foreach (var dictionary in ControlDictionaries)
+        {
+            MergedDictionaries.Add(Load(dictionary));
+        }
     }
 
     private static ResourceDictionary Load(string fileName) =>

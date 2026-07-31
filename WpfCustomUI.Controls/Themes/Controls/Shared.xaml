@@ -1,0 +1,33 @@
+<!--
+    コントロール横断で使う共有リソース。
+    他ファイルからは DynamicResource で参照する(辞書のマージ順に依存させないため)。
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- キーボードフォーカスの視覚表示(点線矩形) -->
+    <Style x:Key="Wcu.FocusVisual">
+        <Setter Property="Control.Template">
+            <Setter.Value>
+                <ControlTemplate>
+                    <Rectangle Margin="-2"
+                               StrokeThickness="1"
+                               Stroke="{DynamicResource Wcu.Brush.Border.Focus}"
+                               StrokeDashArray="1 2"
+                               SnapsToDevicePixels="True" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!--
+        検証エラーの表示規約(spec 4.6): 赤枠+ツールチップ。
+        赤枠はコントロール自身の BorderBrush をスタイルトリガーで変えるため、
+        既定の Adorner(赤枠の二重描画)は無効化する。
+    -->
+    <ControlTemplate x:Key="Wcu.ValidationErrorTemplate">
+        <AdornedElementPlaceholder />
+    </ControlTemplate>
+
+</ResourceDictionary>

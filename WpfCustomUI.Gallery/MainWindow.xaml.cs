@@ -9,6 +9,8 @@ namespace WpfCustomUI.Gallery
         private static readonly (string Title, Func<object> CreatePage)[] Pages =
         [
             ("Design Tokens", () => new TokensPage()),
+            ("Inputs & Buttons", () => new InputsPage()),
+            ("Navigation & Menus", () => new NavigationPage()),
         ];
 
         public MainWindow()
@@ -21,6 +23,17 @@ namespace WpfCustomUI.Gallery
             }
 
             NavList.SelectedIndex = 0;
+
+            // --smoke: 全ページを一度生成して XAML・リソース解決のエラーを検出し、即終了する
+            if (Environment.GetCommandLineArgs().Contains("--smoke"))
+            {
+                foreach (var (_, createPage) in Pages)
+                {
+                    _ = createPage();
+                }
+
+                Application.Current.Shutdown(0);
+            }
         }
 
         private void NavList_SelectionChanged(object sender, SelectionChangedEventArgs e)
