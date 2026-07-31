@@ -1,10 +1,11 @@
 ﻿using System.Windows;
 using System.Windows.Controls;
+using WpfCustomUI.Controls;
 using WpfCustomUI.Gallery.Pages;
 
 namespace WpfCustomUI.Gallery
 {
-    public partial class MainWindow : Window
+    public partial class MainWindow : WcuWindow
     {
         private static readonly (string Title, Func<object> CreatePage)[] Pages =
         [
@@ -17,6 +18,7 @@ namespace WpfCustomUI.Gallery
             ("ColorMap 凡例", () => new ColorMapPage()),
             ("LogConsole & Progress", () => new LogConsolePage()),
             ("Shell", () => new ShellPage()),
+            ("Windows & Dialogs", () => new WindowsPage()),
         ];
 
         public MainWindow()
@@ -29,6 +31,17 @@ namespace WpfCustomUI.Gallery
             }
 
             NavList.SelectedIndex = 0;
+
+            // --msgbox: 起動直後に WcuMessageBox を表示する(見た目確認・スクリーンショット用)
+            if (Environment.GetCommandLineArgs().Contains("--msgbox"))
+            {
+                Loaded += (_, _) => Dispatcher.BeginInvoke(() => WcuMessageBox.Show(
+                    this,
+                    "モデルが変更されています。保存しますか?",
+                    "確認",
+                    MessageBoxButton.YesNoCancel,
+                    MessageBoxImage.Question));
+            }
 
             // --smoke: 全ページを一度生成して XAML・リソース解決のエラーを検出し、即終了する
             if (Environment.GetCommandLineArgs().Contains("--smoke"))

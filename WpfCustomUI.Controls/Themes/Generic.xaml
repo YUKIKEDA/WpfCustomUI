@@ -14,5 +14,8 @@
         <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/ColorMapLegend.xaml" />
         <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/LogConsole.xaml" />
         <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/ProgressDisplay.xaml" />
+        <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/WcuWindow.xaml" />
+        <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/ToastHost.xaml" />
+        <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/BusyOverlay.xaml" />
     </ResourceDictionary.MergedDictionaries>
 </ResourceDictionary>

@@ -1,15 +1,12 @@
-﻿<Window x:Class="WpfCustomUI.Gallery.MainWindow"
+﻿<wcu:WcuWindow x:Class="WpfCustomUI.Gallery.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:wcu="clr-namespace:WpfCustomUI.Controls;assembly=WpfCustomUI.Controls"
         mc:Ignorable="d"
         Title="WpfCustomUI Gallery"
-        Height="720" Width="1080"
-        Background="{DynamicResource Wcu.Brush.Surface.Window}"
-        Foreground="{DynamicResource Wcu.Brush.Text.Primary}"
-        FontFamily="{StaticResource Wcu.FontFamily.Default}"
-        FontSize="{StaticResource Wcu.FontSize.M}">
+        Height="720" Width="1080">
     <DockPanel>
         <!-- 左ナビゲーション -->
         <Border DockPanel.Dock="Left"
@@ -37,4 +34,4 @@
         <!-- ページ表示領域 -->
         <ContentControl x:Name="PageHost" Margin="16" />
     </DockPanel>
-</Window>
+</wcu:WcuWindow>

@@ -1,0 +1,44 @@
+<ui:WcuDialogWindow x:Class="WpfCustomUI.Gallery.Dialogs.SampleDialog"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:ui="https://schemas.wpfcustomui.dev/xaml"
+                    Title="材料の追加"
+                    SizeToContent="WidthAndHeight">
+    <!-- 下部ボタンバーは Footer プロパティに置く -->
+    <ui:WcuDialogWindow.Footer>
+        <StackPanel Orientation="Horizontal">
+            <Button Content="OK"
+                    MinWidth="80"
+                    IsDefault="True"
+                    Style="{DynamicResource Wcu.Button.Accent}"
+                    Click="Ok_Click" />
+            <Button Content="キャンセル"
+                    MinWidth="80"
+                    Margin="8,0,0,0"
+                    IsCancel="True" />
+        </StackPanel>
+    </ui:WcuDialogWindow.Footer>
+
+    <Grid Margin="20" Width="340">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" SharedSizeGroup="Label" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="名前" VerticalAlignment="Center" Margin="0,0,12,8" />
+        <TextBox x:Name="NameBox" Grid.Column="1" Margin="0,0,0,8" Text="Steel (S45C)" />
+
+        <TextBlock Grid.Row="1" Text="ヤング率" VerticalAlignment="Center" Margin="0,0,12,8" />
+        <ui:NumericBox Grid.Row="1" Grid.Column="1" Margin="0,0,0,8"
+                       Value="205" Minimum="0" Increment="1" Unit="GPa" />
+
+        <TextBlock Grid.Row="2" Text="ポアソン比" VerticalAlignment="Center" Margin="0,0,12,0" />
+        <ui:NumericBox Grid.Row="2" Grid.Column="1"
+                       Value="0.3" Minimum="0" Maximum="0.5" Increment="0.01" />
+    </Grid>
+</ui:WcuDialogWindow>
