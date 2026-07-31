@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="WpfCustomControls/WpfCustomControls.csproj" />
+  <Project Path="WpfCustomUI.Example/WpfCustomUI.Example.csproj" />
+</Solution>
