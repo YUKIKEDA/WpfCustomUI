@@ -1,9 +1,9 @@
-﻿<Application x:Class="WpfCustomUI.Example.App"
+﻿<Application x:Class="WpfCustomUI.Gallery.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:local="clr-namespace:WpfCustomUI.Example"
+             xmlns:ui="https://schemas.wpfcustomui.dev/xaml"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
-         
+        <ui:WcuTheme Theme="Dark" />
     </Application.Resources>
 </Application>

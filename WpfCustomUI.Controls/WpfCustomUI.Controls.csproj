@@ -7,4 +7,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <!-- 当面はプロジェクト参照で利用するが、いつでも dotnet pack できるようメタデータを整備しておく -->
+  <PropertyGroup>
+    <PackageId>WpfCustomUI.Controls</PackageId>
+    <Version>0.1.0</Version>
+    <Description>Theme foundation and CAE-oriented UI controls for WPF desktop applications.</Description>
+    <RepositoryType>git</RepositoryType>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
 </Project>

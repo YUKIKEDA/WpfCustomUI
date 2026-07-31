@@ -1,0 +1,32 @@
+<!--
+    テーマに依存しない寸法・タイポグラフィのデザイントークン。
+    切替対象ではないため StaticResource で参照してよい(spec 4.1)。
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+
+    <!-- Typography -->
+    <FontFamily x:Key="Wcu.FontFamily.Default">Segoe UI, Yu Gothic UI</FontFamily>
+    <FontFamily x:Key="Wcu.FontFamily.Monospace">Cascadia Mono, Consolas</FontFamily>
+    <sys:Double x:Key="Wcu.FontSize.S">11</sys:Double>
+    <sys:Double x:Key="Wcu.FontSize.M">12</sys:Double>
+    <sys:Double x:Key="Wcu.FontSize.L">14</sys:Double>
+
+    <!-- Spacing (4px グリッド基調) -->
+    <sys:Double x:Key="Wcu.Spacing.XS">2</sys:Double>
+    <sys:Double x:Key="Wcu.Spacing.S">4</sys:Double>
+    <sys:Double x:Key="Wcu.Spacing.M">8</sys:Double>
+    <sys:Double x:Key="Wcu.Spacing.L">12</sys:Double>
+
+    <!-- Control metrics -->
+    <sys:Double x:Key="Wcu.ControlHeight">24</sys:Double>
+    <sys:Double x:Key="Wcu.IconSize">16</sys:Double>
+    <CornerRadius x:Key="Wcu.CornerRadius">2</CornerRadius>
+
+    <!-- よく使う Thickness の組み合わせ -->
+    <Thickness x:Key="Wcu.Padding.Input">4,2</Thickness>
+    <Thickness x:Key="Wcu.Padding.Panel">8</Thickness>
+
+</ResourceDictionary>

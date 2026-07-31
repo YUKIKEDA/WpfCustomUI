@@ -1,0 +1,49 @@
+<UserControl x:Class="WpfCustomUI.Gallery.Pages.TokensPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d">
+    <UserControl.Resources>
+        <Style x:Key="SectionHeader" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="{StaticResource Wcu.FontSize.L}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,16,0,8" />
+        </Style>
+    </UserControl.Resources>
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel MaxWidth="900" HorizontalAlignment="Left">
+
+            <TextBlock Text="Design Tokens"
+                       FontSize="20" FontWeight="SemiBold" Margin="0,0,0,4" />
+            <TextBlock Text="ライブラリの全スタイルはここに表示されるトークンだけを参照します。"
+                       Foreground="{DynamicResource Wcu.Brush.Text.Secondary}" />
+
+            <!-- アクセントカラーの実行時切替デモ -->
+            <TextBlock Text="Accent (runtime switch)" Style="{StaticResource SectionHeader}" />
+            <StackPanel x:Name="AccentPanel" Orientation="Horizontal" />
+
+            <!-- セマンティックブラシ一覧(コードビハインドで生成) -->
+            <TextBlock Text="Semantic Brushes" Style="{StaticResource SectionHeader}" />
+            <WrapPanel x:Name="BrushPanel" />
+
+            <!-- タイポグラフィ -->
+            <TextBlock Text="Typography" Style="{StaticResource SectionHeader}" />
+            <StackPanel>
+                <TextBlock Text="Wcu.FontSize.S (11px) — 補足テキスト、単位ラベル"
+                           FontSize="{StaticResource Wcu.FontSize.S}" Margin="0,2" />
+                <TextBlock Text="Wcu.FontSize.M (12px) — 標準テキスト、入力値"
+                           FontSize="{StaticResource Wcu.FontSize.M}" Margin="0,2" />
+                <TextBlock Text="Wcu.FontSize.L (14px) — セクション見出し"
+                           FontSize="{StaticResource Wcu.FontSize.L}" Margin="0,2" />
+                <TextBlock Text="Wcu.FontFamily.Monospace — 1.2345e-6 (ログ・数値表示用)"
+                           FontFamily="{StaticResource Wcu.FontFamily.Monospace}" Margin="0,2" />
+            </StackPanel>
+
+            <!-- 余白スケール -->
+            <TextBlock Text="Spacing (4px grid)" Style="{StaticResource SectionHeader}" />
+            <StackPanel x:Name="SpacingPanel" />
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
