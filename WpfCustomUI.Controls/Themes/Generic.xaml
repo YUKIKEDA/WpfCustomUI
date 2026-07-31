@@ -1,8 +1,12 @@
 <!--
     CustomControl の既定スタイル置き場。
-    コントロール実装時に Themes/Controls/*.xaml を作成し、ここにマージする。
+    スタイル本体は Themes/Controls/*.xaml に分割し、ここでマージする。
+    (トークンは実行時に App.Resources の WcuTheme から DynamicResource で解決される)
 -->
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/NumericBox.xaml" />
+    </ResourceDictionary.MergedDictionaries>
 </ResourceDictionary>

@@ -26,6 +26,7 @@ public class WcuTheme : ResourceDictionary
         "Controls/ToolTip.xaml",
         "Controls/Slider.xaml",
         "Controls/ProgressBar.xaml",
+        "Controls/Expander.xaml",
     ];
 
     private WcuThemeVariant _theme;

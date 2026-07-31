@@ -11,6 +11,7 @@ namespace WpfCustomUI.Gallery
             ("Design Tokens", () => new TokensPage()),
             ("Inputs & Buttons", () => new InputsPage()),
             ("Navigation & Menus", () => new NavigationPage()),
+            ("NumericBox & Expander", () => new NumericPage()),
         ];
 
         public MainWindow()

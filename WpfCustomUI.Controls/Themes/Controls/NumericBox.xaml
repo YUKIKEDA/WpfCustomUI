@@ -1,0 +1,124 @@
+<!--
+    NumericBox の既定スタイル(Generic.xaml からマージされる)。
+    見た目は TextBox と揃え、右側に単位ラベルとスピンボタンを持つ。
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:wcu="clr-namespace:WpfCustomUI.Controls">
+
+    <Style x:Key="Wcu.NumericBox.SpinButton" TargetType="{x:Type RepeatButton}">
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="IsTabStop" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type RepeatButton}">
+                    <Border x:Name="Root" Background="Transparent">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{DynamicResource Wcu.Brush.State.Hover}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{DynamicResource Wcu.Brush.State.Pressed}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="{x:Type wcu:NumericBox}">
+        <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Surface.Input}" />
+        <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Primary}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Border.Default}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="{DynamicResource Wcu.Padding.Input}" />
+        <Setter Property="MinHeight" Value="{DynamicResource Wcu.ControlHeight}" />
+        <Setter Property="IsTabStop" Value="False" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type wcu:NumericBox}">
+                    <Border x:Name="Root"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{DynamicResource Wcu.CornerRadius}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="PART_TextBox"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     MinHeight="0"
+                                     Padding="{TemplateBinding Padding}"
+                                     Foreground="{TemplateBinding Foreground}"
+                                     VerticalContentAlignment="Center"
+                                     IsReadOnly="{TemplateBinding IsReadOnly}" />
+                            <TextBlock x:Name="UnitLabel"
+                                       Grid.Column="1"
+                                       Text="{TemplateBinding UnitText}"
+                                       Foreground="{DynamicResource Wcu.Brush.Text.Secondary}"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,4,0" />
+                            <Grid x:Name="SpinButtons" Grid.Column="2" Width="14">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <RepeatButton x:Name="PART_IncreaseButton"
+                                              Style="{StaticResource Wcu.NumericBox.SpinButton}">
+                                    <Path Data="M 0,3 L 3,0 L 6,3"
+                                          Stroke="{DynamicResource Wcu.Brush.Text.Secondary}"
+                                          StrokeThickness="1.2" />
+                                </RepeatButton>
+                                <RepeatButton x:Name="PART_DecreaseButton"
+                                              Grid.Row="1"
+                                              Style="{StaticResource Wcu.NumericBox.SpinButton}">
+                                    <Path Data="M 0,0 L 3,3 L 6,0"
+                                          Stroke="{DynamicResource Wcu.Brush.Text.Secondary}"
+                                          StrokeThickness="1.2" />
+                                </RepeatButton>
+                            </Grid>
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="UnitText" Value="{x:Null}">
+                            <Setter TargetName="UnitLabel" Property="Visibility" Value="Collapsed" />
+                        </Trigger>
+                        <Trigger Property="UnitText" Value="">
+                            <Setter TargetName="UnitLabel" Property="Visibility" Value="Collapsed" />
+                        </Trigger>
+                        <Trigger Property="IsReadOnly" Value="True">
+                            <Setter TargetName="SpinButtons" Property="Visibility" Value="Collapsed" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Border.Strong}" />
+            </Trigger>
+            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Border.Focus}" />
+            </Trigger>
+            <!-- 検証エラー: 赤枠+ツールチップ(spec 4.6)。フォーカストリガーより後に置いて優先させる -->
+            <Trigger Property="HasError" Value="True">
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Error}" />
+                <Setter Property="ToolTip"
+                        Value="{Binding ErrorText, RelativeSource={RelativeSource Self}}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Disabled}" />
+                <Setter Property="Opacity" Value="0.6" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+</ResourceDictionary>
