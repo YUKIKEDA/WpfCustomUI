@@ -25,6 +25,7 @@ namespace WpfCustomUI.Gallery
             ("More Controls", () => new MoreControlsPage()),
             ("Misc Inputs & Wizard", () => new MiscInputsPage()),
             ("Docking", () => new DockingPage()),
+            ("Charts", () => new ChartsPage()),
         ];
 
         public MainWindow()

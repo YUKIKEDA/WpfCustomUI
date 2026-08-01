@@ -379,6 +379,51 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 - UIA 検証: `.dev/scripts/verify-docking.ps1`(初期表示 → レイアウト保存 → キャプションのマウスドラッグでフローティング化(ガイド表示のスクリーンショット込み)→ レイアウト復元でドックに戻ることを確認)。**注意**: UIA のデスクトップ直下列挙は owned window を取りこぼすことがあるため、シェルウィンドウは Win32 `EnumWindows` で hwnd を得て `AutomationElement.FromHandle` で掴む。ドラッグはタブではなくキャプションから行うと確実
 - スモークテスト(`--smoke`)は全ページに加えて `DockingShellWindow` の生成も検証する
 
+## 6.14 チャート(Phase 14)
+
+(2026-08-01 の設計インタビューで決定)
+
+### 6.14.1 スコープと方式
+
+- **Dirkster.AvalonDock で確立した「外部依存は別アセンブリ」パターンを適用**し、新プロジェクト `WpfCustomUI.Charts` に依存を隔離する(コアは依存ゼロを維持)
+- **ScottPlot 5 を採用**(調査時点 5.1.58 / 2026-03、MIT、.NET 10 公式対応)。判断根拠:
+  - CAE の用途(数十万〜数百万点の時刻歴、ストリーミング更新される収束モニタ、対数軸)に性能面で応えられるのは実質 ScottPlot のみ(Signal/SignalXY プロット)
+  - OxyPlot は保守停滞が明確(最終リリース 2024、メンテナが時間確保困難と明言)。LiveCharts2 はダッシュボード向きで大規模データに不向き。スクラッチは月単位の工数
+  - トレードオフ: ラスタ描画のためテーマ適用は XAML でなくコード(下記②で解決)。SkiaSharp のネイティブ依存が付く(別アセンブリ隔離でコアは無影響)
+
+### 6.14.2 提供物(ハイブリッド: テーマ+複合コントロール少数+素通し)
+
+- 完全ファサードは作らない(ドッキングと同じ判断)。自由プロットは ScottPlot の型を素通しで使う
+- **① WcuPlot(`WpfPlot` 派生)+ WcuChartTheme**: ロード時に Wcu トークン配色(背景・軸・グリッド・凡例・シリーズパレット)を自動適用し、テーマ/アクセント変更に自動追従。静的 `WcuChartTheme.Apply(Plot)` も公開(素の WpfPlot・画像出力用 Plot への手動適用)
+  - **コアへの追随変更**: `ThemeManager` に `ThemeChanged` イベントを追加(SetTheme / SetAccent / ResetAccent で発火)。ラスタ描画系の消費者が再配色・再描画するためのフック
+- **② 複合コントロール4つ**(いずれも WcuPlot を内包):
+  - **ConvergenceMonitor**: 収束モニタ。`ConvergenceSeries`(Name + スレッドセーフ `Append(double)` / `Clear()`)を複数受け、約 100ms のスロットリングでまとめて再描画(LogBuffer と同じ発想。ソルバーの毎反復 Append に耐える)。DP: `Threshold`(しきい値破線、null で非表示)/ `IsLogScale`(既定 true)。X は反復番号で自動スクロール
+  - **HistoryChart**: 汎用折れ線。`ChartSeries` モデル(Name / X,Y 配列 / 任意の色・線種、INPC)+ `SeriesSource` バインド。データ更新は「新しい配列をセット」で通知(MatrixBox と同じ常套手段)。色未指定はトークン由来のシリーズパレットを自動割当。カーソル読取・軸ラベル付き
+  - **FrequencyResponsePlot**: 周波数応答。振幅(上段)+位相(下段)の2段構成で X 軸(周波数・対数)を共有。`FrequencyResponseSeries`(Frequencies / Magnitudes / Phases は任意)。DP: `ShowPhase`(既定 true)/ `MagnitudeInDecibels`(既定 true)
+  - **HistogramChart**: 結果量の分布表示。`Values` + `BinCount`(既定 20)。集計は ScottPlot の Histogram 機能に委譲。DP: `Normalize`(度数/確率密度、既定は度数)
+- シリーズの MVVM 規約は既存の「明示的アイテムモデル」(PropertyItem / ITreeNode)の流儀に合わせる
+
+### 6.14.3 デモと検証
+
+- ギャラリーに「Charts」ページ: 4複合コントロールのデモ(収束モニタはソルバーシミュレーション連動)+ 素の WcuPlot 自由プロット例。ボード線図が HistoryChart の対数軸設定でも表現できることも例示
+- 検証は既存流儀(--smoke へのページ組み込み + UIA スクリプト + スクリーンショット目視)
+
+### 6.14.4 実装メモ(Phase 14 完了時)
+
+- **バージョン**: ScottPlot.WPF **5.1.59** を採用。推移的依存の SkiaSharp.Views.WPF が net4x TFM のみのため NU1701 警告が出るが、ScottPlot 公式サポート構成のため `<NoWarn>NU1701</NoWarn>` で抑制
+- **WcuChartTheme**(`WpfCustomUI.Charts/WcuChartTheme.cs`): 適用時点の `Wcu.Color.*` トークンを Application リソースから読み取り、`FigureBackground` / `DataBackground` / `Axes.Color` / `Grid.Major(Minor)LineColor` / `Legend.*` / `Add.Palette`(先頭=アクセント現在値の 8 色パレット)を設定。`plot.Font.Automatic()` で日本語ラベルにも対応
+- **WcuPlot**: ctor で配色適用、Loaded/Unloaded で `ThemeManager.ThemeChanged` を購読/解除(静的イベントのリーク防止)。再適用後に `ThemeApplied` イベントを発火し、複合コントロールはこれを受けてシリーズ再構築(既存プロットの色は Apply では変わらないため)
+- **ホイール競合対策(Ctrl+ホイール=ズーム)**: ScottPlot はホイールズーム後もイベントを Handled にしないため、外側に ScrollViewer があるとページスクロールとズームが同時に起きる。WcuPlot は既定で **Ctrl+ホイールのみズーム**とし(`WheelZoomRequiresCtrl`、スクロールしない全面配置なら false で素のホイールズームに戻せる)、素のホイールは `OnPreviewMouseWheel` で内部 SKElement に届く前に止めて WcuPlot 起点のバブリングイベントとして再発行→外側のページスクロールに素通しする。ズーム時(Ctrl あり)は `OnMouseWheel` で Handled にしてページスクロールを止める
+  - **注意**: ScottPlot 既定の `MouseWheelZoom` は Ctrl を「縦軸ロック」キーに使っておりゲートと競合するため、ctor でロックキーを Shift(横軸)/ Alt(縦軸)に付け替えている
+  - 検証: `.dev/scripts/verify-charts-wheel.ps1`(素のホイール=スクロールのみ・ズームなし / Ctrl+ホイール=ズームのみ・スクロールなし)
+- **対数軸は log10 変換方式**(ScottPlot 5 の公式流儀): データを log10 変換して描画し、`NumericAutomatic + LogMinorTickGenerator + IntegerTicksOnly + LabelFormatter` で目盛りを 10^n 表示(`ChartHelpers.CreateLogTickGenerator`)。ConvergenceMonitor の縦軸・FrequencyResponsePlot の横軸で使用
+- **ConvergenceMonitor**: `ConvergenceSeries.Changed` はワーカースレッドから飛ぶため、ハンドラは volatile な dirty フラグを立てるだけにし、UI 側 `DispatcherTimer`(100ms、Loaded/Unloaded で開始/停止)が dirty のときだけ再構築する
+- **FrequencyResponsePlot**: テンプレートは WcuPlot 2 枚(`PART_MagnitudePlot` / `PART_PhasePlot`)。X 軸同期は各 Plot の `RenderManager.AxisLimitsChanged` で相手に `SetLimitsX` をコピー(再入ガード付き)。`ShowPhase=False` は Trigger で行 Height=0 + Collapsed
+- **HistogramChart**: ビン集計は自前実装(min/max 等幅、max ちょうどは最終ビン、全値同一でも幅を確保)。ScottPlot の `Statistics.Histogram` は API 変動があるため使わない。`Normalize` は総数×ビン幅で除して確率密度化
+- **HistoryChart のカーソル読取**: `Crosshair` プロットタブル + `VerticalLine.Text` / `HorizontalLine.Text` に座標を表示(MouseMove で `GetCoordinates(pixel × DisplayScale)`)。MouseLeave で非表示
+- デモ(`ChartsPage`): 解析開始ボタンで `Task.Run` の疑似ソルバー(Thread.Sleep(25) × 最大400反復、途中で荷重ステップ切替の残差ジャンプ)がワーカースレッドから直接 `Append`。荷重-変位曲線 / 2自由度 FRF / von Mises 分布(Box-Muller)/ 素の WcuPlot(移動平均)の例
+- UIA 検証: `.dev/scripts/verify-charts.ps1`(ストリーミング進行と収束検出 → 十字カーソル → 位相パネル切替 → ビン数変更・密度正規化 → 自由プロット)+ `verify-charts-accent.ps1`(アクセント変更後のチャート再配色)
+
 ## 7. テスト方針
 
 - **UI に依存しないロジックのみ** xUnit でテストする:
@@ -390,20 +435,20 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 
 ## 8. 実装フェーズ
 
-| フェーズ                                         | 内容                                                                                                                                                 | 状態                 |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| **Phase 0 — 基盤**                               | `WpfCustomUI.Controls` へ改名、`XmlnsDefinition`、デザイントークン定義、ダークテーマ辞書、ギャラリー骨格、テストプロジェクト追加                     | ✅ 完了 (2026-07-31) |
-| **Phase 1 — 標準コントロールスタイル(コア集合)** | Button / TextBox / ComboBox / CheckBox / ScrollBar / TabControl / Menu / ToolTip / Slider / ProgressBar など、CAE コントロールの部品になるものを優先 | ✅ 完了 (2026-07-31) |
-| **Phase 2 — 部品系 CAE コントロール**            | 単位付き数値入力、グループパネル/Expander(他の部品になるため先行)                                                                                    | ✅ 完了 (2026-07-31) |
-| **Phase 3 — プロパティグリッド**                 | Phase 2 のエディタを利用                                                                                                                             | ✅ 完了 (2026-08-01) |
-| **Phase 4 — モデルツリー**                       | フラット化ツリー。ロジックのテスト重点                                                                                                               | ✅ 完了 (2026-08-01) |
-| **Phase 5 — 独立系**                             | ログコンソール / 進捗表示 / カラーマップ凡例(相互独立なので順不同)                                                                                   | ✅ 完了 (2026-08-01) |
-| **Phase 6 — シェル軽量群**                       | GridSplitter / GroupBox / Separator / ToolBar / StatusBar / SearchBox(+PropertyGrid フィルタ改修)                                                    | ✅ 完了 (2026-08-01) |
-| **Phase 7 — ウィンドウ系**                       | WcuWindow(クローム) / WcuDialogWindow / WcuMessageBox / ToastHost / BusyOverlay                                                                      | ✅ 完了 (2026-08-01) |
-| **Phase 8 — DataGrid**                           | 標準 DataGrid のフルスタイル化(最大工数のため独立フェーズ)                                                                                           | ✅ 完了 (2026-08-01) |
-| **Phase 9 — 入力・ツールバー小物**               | DropDownButton / SplitButton / PathBox / RangeSlider / ColorPicker(ColorEditor) / Vector3Box + PropertyGrid 連携(Path/Color/Vector3 PropertyItem)    | ✅ 完了 (2026-08-01) |
-| **Phase 10 — テーマ網羅+小物**                   | TreeView / ListView(GridView) / PasswordBox / RichTextBox / Hyperlink / Label のスタイル穴埋め + InfoBar / ToggleSwitch / ProgressRing               | ✅ 完了 (2026-08-01) |
-| **Phase 11 — ポスト処理系小物 第2弾**            | PlaybackBar(結果アニメーション再生バー) / ColorScaleEditor(カラーマップ設定エディタ、`ColorScale.Clone()` 追加)                                      | ✅ 完了 (2026-08-01) |
-| **Phase 12 — 小物の最終弾**                      | CheckComboBox / MatrixBox / ModelTree インライン名前変更 / KeyGestureBox / Wizard(StepIndicator)                                                      | ✅ 完了 (2026-08-01) |
-| **Phase 13 — ドッキング**                        | `WpfCustomUI.Docking` 新設(Dirkster.AvalonDock 4.74.1)。WcuDockTheme(ResourceKeys 再配色+Wcu トークン)/ DockLayout 永続化ヘルパー / フルシェルデモ  | ✅ 完了 (2026-08-01) |
-| **(将来)Charts**                                 | 外部ライブラリ(ScottPlot / OxyPlot 等を選定)ベースの別アセンブリ `WpfCustomUI.Charts`。収束モニタ等の CAE 向け複合コントロールを提供                 | 構想                 |
+| フェーズ                                         | 内容                                                                                                                                                                      | 状態                 |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| **Phase 0 — 基盤**                               | `WpfCustomUI.Controls` へ改名、`XmlnsDefinition`、デザイントークン定義、ダークテーマ辞書、ギャラリー骨格、テストプロジェクト追加                                          | ✅ 完了 (2026-07-31) |
+| **Phase 1 — 標準コントロールスタイル(コア集合)** | Button / TextBox / ComboBox / CheckBox / ScrollBar / TabControl / Menu / ToolTip / Slider / ProgressBar など、CAE コントロールの部品になるものを優先                      | ✅ 完了 (2026-07-31) |
+| **Phase 2 — 部品系 CAE コントロール**            | 単位付き数値入力、グループパネル/Expander(他の部品になるため先行)                                                                                                         | ✅ 完了 (2026-07-31) |
+| **Phase 3 — プロパティグリッド**                 | Phase 2 のエディタを利用                                                                                                                                                  | ✅ 完了 (2026-08-01) |
+| **Phase 4 — モデルツリー**                       | フラット化ツリー。ロジックのテスト重点                                                                                                                                    | ✅ 完了 (2026-08-01) |
+| **Phase 5 — 独立系**                             | ログコンソール / 進捗表示 / カラーマップ凡例(相互独立なので順不同)                                                                                                        | ✅ 完了 (2026-08-01) |
+| **Phase 6 — シェル軽量群**                       | GridSplitter / GroupBox / Separator / ToolBar / StatusBar / SearchBox(+PropertyGrid フィルタ改修)                                                                         | ✅ 完了 (2026-08-01) |
+| **Phase 7 — ウィンドウ系**                       | WcuWindow(クローム) / WcuDialogWindow / WcuMessageBox / ToastHost / BusyOverlay                                                                                           | ✅ 完了 (2026-08-01) |
+| **Phase 8 — DataGrid**                           | 標準 DataGrid のフルスタイル化(最大工数のため独立フェーズ)                                                                                                                | ✅ 完了 (2026-08-01) |
+| **Phase 9 — 入力・ツールバー小物**               | DropDownButton / SplitButton / PathBox / RangeSlider / ColorPicker(ColorEditor) / Vector3Box + PropertyGrid 連携(Path/Color/Vector3 PropertyItem)                         | ✅ 完了 (2026-08-01) |
+| **Phase 10 — テーマ網羅+小物**                   | TreeView / ListView(GridView) / PasswordBox / RichTextBox / Hyperlink / Label のスタイル穴埋め + InfoBar / ToggleSwitch / ProgressRing                                    | ✅ 完了 (2026-08-01) |
+| **Phase 11 — ポスト処理系小物 第2弾**            | PlaybackBar(結果アニメーション再生バー) / ColorScaleEditor(カラーマップ設定エディタ、`ColorScale.Clone()` 追加)                                                           | ✅ 完了 (2026-08-01) |
+| **Phase 12 — 小物の最終弾**                      | CheckComboBox / MatrixBox / ModelTree インライン名前変更 / KeyGestureBox / Wizard(StepIndicator)                                                                          | ✅ 完了 (2026-08-01) |
+| **Phase 13 — ドッキング**                        | `WpfCustomUI.Docking` 新設(Dirkster.AvalonDock 4.74.1)。WcuDockTheme(ResourceKeys 再配色+Wcu トークン)/ DockLayout 永続化ヘルパー / フルシェルデモ                        | ✅ 完了 (2026-08-01) |
+| **Phase 14 — Charts**                            | `WpfCustomUI.Charts` 新設(ScottPlot 5)。WcuPlot/WcuChartTheme(トークン配色+ThemeChanged 追従)/ ConvergenceMonitor / HistoryChart / FrequencyResponsePlot / HistogramChart | ✅ 完了 (2026-08-01) |

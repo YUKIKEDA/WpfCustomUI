@@ -1,6 +1,7 @@
 <Solution>
   <Project Path="WpfCustomUI.Controls.Tests/WpfCustomUI.Controls.Tests.csproj" Id="f835e78c-21ec-4ab5-aac2-63fe22a8c1bf" />
   <Project Path="WpfCustomUI.Controls/WpfCustomUI.Controls.csproj" Id="9af16a2f-62aa-494f-8c21-94e2f1fe8974" />
+  <Project Path="WpfCustomUI.Charts/WpfCustomUI.Charts.csproj" />
   <Project Path="WpfCustomUI.Docking/WpfCustomUI.Docking.csproj" />
   <Project Path="WpfCustomUI.Gallery/WpfCustomUI.Gallery.csproj" />
 </Solution>

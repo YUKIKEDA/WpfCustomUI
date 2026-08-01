@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- SkiaSharp.Views.WPF は net4x TFM のみだが実際は net10 の WPF でも動作する
+         (ScottPlot.WPF 公式サポート構成)。既知のパッケージング上の警告のため抑制する。 -->
+    <NoWarn>$(NoWarn);NU1701</NoWarn>
+  </PropertyGroup>
+
+  <!--
+    チャートは外部ライブラリ(ScottPlot, MIT)への依存を持つアセンブリ(spec 6.14)。
+    ドッキングと同じく、コア(WpfCustomUI.Controls)の依存ゼロ方針を守るためここに隔離する。
+  -->
+  <PropertyGroup>
+    <PackageId>WpfCustomUI.Charts</PackageId>
+    <Version>0.1.0</Version>
+    <Description>ScottPlot-based charting integration (theme and CAE composite charts) for WpfCustomUI.</Description>
+    <RepositoryType>git</RepositoryType>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WpfCustomUI.Controls\WpfCustomUI.Controls.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ScottPlot.WPF" Version="5.1.59" />
+  </ItemGroup>
+
+</Project>

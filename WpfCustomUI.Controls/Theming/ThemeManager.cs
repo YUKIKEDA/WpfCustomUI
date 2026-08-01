@@ -24,6 +24,13 @@ public static class ThemeManager
         "Wcu.Color.Accent.Muted",
     ];
 
+    /// <summary>
+    /// テーマ・アクセントが実行時に変更されたときに発火する。
+    /// DynamicResource を使えない消費者(WpfCustomUI.Charts のようなラスタ描画系)が
+    /// 再配色・再描画するためのフック。UI スレッドで発火する。
+    /// </summary>
+    public static event EventHandler? ThemeChanged;
+
     /// <summary>登録済みの全 WcuTheme のバリアントを切り替える。</summary>
     public static void SetTheme(WcuThemeVariant variant)
     {
@@ -31,6 +38,8 @@ public static class ThemeManager
         {
             theme.Apply(variant);
         }
+
+        ThemeChanged?.Invoke(null, EventArgs.Empty);
     }
 
     /// <summary>
@@ -57,6 +66,8 @@ public static class ThemeManager
             theme["Wcu.Color.Accent.Pressed"] = palette.Pressed;
             theme["Wcu.Color.Accent.Muted"] = palette.Muted;
         }
+
+        ThemeChanged?.Invoke(null, EventArgs.Empty);
     }
 
     /// <summary>アクセント上書きを解除し、テーマ既定のアクセントに戻す。</summary>
@@ -69,6 +80,8 @@ public static class ThemeManager
                 theme.Remove(key);
             }
         }
+
+        ThemeChanged?.Invoke(null, EventArgs.Empty);
     }
 
     internal static void Register(WcuTheme theme)

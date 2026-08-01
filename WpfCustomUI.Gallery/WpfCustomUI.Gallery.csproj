@@ -9,6 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\WpfCustomUI.Charts\WpfCustomUI.Charts.csproj" />
     <ProjectReference Include="..\WpfCustomUI.Controls\WpfCustomUI.Controls.csproj" />
     <ProjectReference Include="..\WpfCustomUI.Docking\WpfCustomUI.Docking.csproj" />
   </ItemGroup>

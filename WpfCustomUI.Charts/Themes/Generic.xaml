@@ -1,0 +1,76 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="clr-namespace:WpfCustomUI.Charts">
+
+    <!-- ================================================================
+         HistoryChart (spec 6.14.3)
+         ================================================================ -->
+    <Style TargetType="{x:Type local:HistoryChart}">
+        <Setter Property="MinHeight" Value="120" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type local:HistoryChart}">
+                    <local:WcuPlot x:Name="PART_Plot" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ================================================================
+         ConvergenceMonitor (spec 6.14.3)
+         ================================================================ -->
+    <Style TargetType="{x:Type local:ConvergenceMonitor}">
+        <Setter Property="MinHeight" Value="120" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type local:ConvergenceMonitor}">
+                    <local:WcuPlot x:Name="PART_Plot" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ================================================================
+         FrequencyResponsePlot (spec 6.14.3)
+         上段: 振幅 / 下段: 位相。ShowPhase=False で位相行を潰す。
+         ================================================================ -->
+    <Style TargetType="{x:Type local:FrequencyResponsePlot}">
+        <Setter Property="MinHeight" Value="180" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type local:FrequencyResponsePlot}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="3*" />
+                            <RowDefinition x:Name="PhaseRow" Height="2*" />
+                        </Grid.RowDefinitions>
+                        <local:WcuPlot x:Name="PART_MagnitudePlot" Grid.Row="0" />
+                        <local:WcuPlot x:Name="PART_PhasePlot" Grid.Row="1" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="ShowPhase" Value="False">
+                            <Setter TargetName="PhaseRow" Property="Height" Value="0" />
+                            <Setter TargetName="PART_PhasePlot" Property="Visibility" Value="Collapsed" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ================================================================
+         HistogramChart (spec 6.14.3)
+         ================================================================ -->
+    <Style TargetType="{x:Type local:HistogramChart}">
+        <Setter Property="MinHeight" Value="120" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type local:HistogramChart}">
+                    <local:WcuPlot x:Name="PART_Plot" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+</ResourceDictionary>
