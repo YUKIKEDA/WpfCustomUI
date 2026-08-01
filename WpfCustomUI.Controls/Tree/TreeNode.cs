@@ -8,8 +8,9 @@ namespace WpfCustomUI.Controls;
 /// <summary>
 /// <see cref="ITreeNode"/> の通知実装済み基底クラス。
 /// アプリはこれを継承(またはそのまま使用)すれば ModelTree に即接続できる。
+/// <see cref="IRenamableNode"/> を実装しているため、既定でインライン名前変更可能。
 /// </summary>
-public class TreeNode : ITreeNode
+public class TreeNode : IRenamableNode
 {
     private string _name = string.Empty;
     private bool _isExpanded;

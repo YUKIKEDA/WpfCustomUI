@@ -35,6 +35,14 @@ namespace WpfCustomUI.Gallery.Pages
             Tree.ItemsSource = _roots;
         }
 
+        private void OnRenameClick(object sender, RoutedEventArgs e)
+        {
+            if (Tree.GetSelectedNodes() is [var node, ..])
+            {
+                Tree.BeginRename(node);
+            }
+        }
+
         private static TreeNode MakePart(string name)
         {
             var part = new TreeNode { Name = name, Icon = PartIcon };

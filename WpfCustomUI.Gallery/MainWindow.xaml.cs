@@ -23,6 +23,7 @@ namespace WpfCustomUI.Gallery
             ("Windows & Dialogs", () => new WindowsPage()),
             ("DataGrid", () => new DataGridPage()),
             ("More Controls", () => new MoreControlsPage()),
+            ("Misc Inputs & Wizard", () => new MiscInputsPage()),
         ];
 
         public MainWindow()

@@ -24,6 +24,7 @@
                         <MenuItem Header="ズーム" />
                         <MenuItem Header="分離表示" />
                         <Separator />
+                        <MenuItem Header="名前の変更" InputGestureText="F2" Click="OnRenameClick" />
                         <MenuItem Header="削除" />
                     </ContextMenu>
                 </ui:ModelTree.ContextMenu>
@@ -38,6 +39,8 @@
                 <Run Text="・目アイコン: 親をクリックすると子孫全てに伝播" /><LineBreak />
                 <Run Text="  子の一部のみ非表示なら親は半透明(混在)表示" /><LineBreak />
                 <Run Text="・右クリックで行選択+コンテキストメニュー" /><LineBreak />
+                <Run Text="・F2 またはメニュー「名前の変更」でインライン編集" /><LineBreak />
+                <Run Text="  (Enter 確定 / Esc 取消 / 空白名は拒否。IRenamableNode 実装ノードのみ)" /><LineBreak />
                 <Run Text="・「Result Sets」以下は 2000 ノード(仮想化の確認用)" />
             </TextBlock>
             <TextBlock x:Name="SelectionInfo"

@@ -83,9 +83,21 @@
                            Margin="4,0,0,0"
                            VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis" />
+                <!-- インライン名前変更(spec 6.12.3)。IsRenaming 中のみ表示され、ModelTree がフォーカス・確定を管理 -->
+                <TextBox x:Name="PART_RenameBox"
+                         Text="{Binding Node.Name, Mode=OneWay}"
+                         Visibility="Collapsed"
+                         MinWidth="100"
+                         Margin="4,-2,0,-2"
+                         Padding="2,0"
+                         VerticalAlignment="Center" />
             </StackPanel>
         </DockPanel>
         <DataTemplate.Triggers>
+            <DataTrigger Binding="{Binding IsRenaming}" Value="True">
+                <Setter TargetName="NameText" Property="Visibility" Value="Collapsed" />
+                <Setter TargetName="PART_RenameBox" Property="Visibility" Value="Visible" />
+            </DataTrigger>
             <DataTrigger Binding="{Binding Node.IsExpanded}" Value="True">
                 <Setter TargetName="ChevronIcon" Property="RenderTransform">
                     <Setter.Value>

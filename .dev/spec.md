@@ -284,6 +284,58 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 - `ColorScale.Clone()` / `CopyFrom()` を追加(ダイアログの適用/キャンセルパターン支援)
 - UIA 検証: `.dev/scripts/verify-postprocessing.ps1`(再生進行・一時停止・ステップ・ループ OFF 末尾自動停止・カラーマップ切替・離散 OFF・Max 編集の凡例追従・詳細 Expander のクランプ解除)
 
+## 6.12 第6弾スコープ — 小物の最終弾
+
+(2026-08-01 の設計インタビューで決定)
+
+- **方針**: 小物として実需のあるものを出し切る最終弾。**ドッキングシステムと Charts は据え置き**——どちらも工数が大きく、要件(フローティング要否・レイアウト保存要否/描画性能・軸種別)は実アプリでの採用後に初めて確定するため、先行実装は作りすぎ・作り足りずの両リスクを負う
+
+### 6.12.1 CheckComboBox(複数選択コンボ)
+
+- 結果成分・荷重ケース・レイヤ表示などのフィルタ用。WPF 標準に存在しない定番の穴
+- **選択モデル**: `ItemsSource` + `SelectedItems`(IList。アプリが ObservableCollection を渡す)。ListBox の「SelectedItems がバインド不可」問題をライブラリ側で解消する
+- **閉時表示**: 既定は表示名の連結(内蔵文字列なし)。`SummaryFormat` DP(例 `"{0} selected"`)を設定したら件数表示に切り替え
+- **すべて選択**: トライステートのチェックボックス行を内蔵し、`SelectAllContent` DP(既定 null=非表示)で有効化。ラベルはアプリが与える(内蔵文字列なし)
+
+### 6.12.2 MatrixBox(行列入力)
+
+- 異方性材料・座標変換・慣性テンソル入力用。Vector3Box の行列版
+- **データモデル**: `double[,] Values` DP。セル確定のたびに新しい配列インスタンスを作って DP にセット(TwoWay で VM に届く。PointCollection 等と同じ WPF 常套手段)。6×6 程度のコピーコストは無視できる
+- `Rows` / `Columns` DP(既定 3×3)。`Values` の次元と不一致なら表示側(Rows/Columns)を優先
+- `IsSymmetric` DP: (i,j) 編集で (j,i) に自動ミラー(剛性・コンプライアンス行列用)
+- `RowHeaders` / `ColumnHeaders`(文字列リスト、null なら非表示)
+- `UnitProvider` / `Format` は全セルの NumericBox へ透過
+
+### 6.12.3 ModelTree インライン名前変更(既存強化)
+
+- **契約**: `IRenamableNode : ITreeNode`(setter 付き `Name`)でオプトイン。実装した型だけ編集可能。`ITreeNode` は無変更(非破壊)。付属の `TreeNode` 基底クラスには実装を追加
+- **トリガー**: F2 + 公開メソッド `BeginRename(node)`(アプリがコンテキストメニューから呼ぶ)。ダブルクリックはアプリの領分(ズーム/フィット等)として空けておく
+- **編集規約**: Enter 確定 / Esc 取消 / 空白のみの名前は拒否してキャンセル扱い
+
+### 6.12.4 KeyGestureBox(ショートカット入力欄)
+
+- 設定ダイアログ用。フォーカス中のキー押下をキャプチャして表示
+- **値**: `KeyGesture?` 型の `Gesture` DP 1本(null=未割り当て)。永続化は WPF 標準の `KeyGestureConverter` で文字列往復可能
+- **規約**: 文字・数字キーは修飾キー必須(WPF の KeyGesture 仕様に準拠)、ファンクションキー・Delete 等は単独可。右端×ボタンでクリア(SearchBox パターン)、Esc で編集前の値に復元
+
+### 6.12.5 Wizard / StepIndicator
+
+- **2部品構成**: `StepIndicator`(ステップ進捗の表示専用。ソルバー進行表示等に単体転用可)+ `Wizard`(ページホスト+戻る/次へ/完了/キャンセル+StepIndicator 内蔵)。ウィンドウはアプリが用意(WcuDialogWindow の分担どおり)
+- `Wizard` は `WizardStep`(Header + Content)を並べる ItemsControl 系。`CurrentIndex` は TwoWay
+- **バリデーション**: `CanGoNext` / `CanFinish` DP(宣言的無効化)+ キャンセル可能な `Navigating` イベント(押下時検証)の両方を提供(Window.Closing と同じ常套パターン)
+- 完了/キャンセルは `Finished` / `Cancelled` ルーティングイベント。ダイアログを閉じるのはアプリ
+- ボタン文字列は既定英語+DP 差し替え(spec 5)
+
+### 6.12.6 実装メモ(Phase 12 完了時)
+
+- `CheckComboBox`(`Input/CheckComboBox.cs`): ItemsControl 派生。項目コンテナは行全体クリック可能な `CheckComboBoxItem : CheckBox`。選択同期は Checked/Unchecked のバブリングを一括処理(**Click は使わない**——UIA の Toggle は Click を発生させないため)。`SummaryText` / `SelectAllState` は読み取り専用 DP。「すべて選択」は操作前の `SelectAllState` で全選択/全解除を判定(三状態のトグル遷移に依存しない)。`SelectAllState` 更新はバインド経由で Checked/Unchecked を再発火させるため `_updating` ガード必須。Popup は StaysOpen=False + 「閉じた直後 200ms のトグルクリック無視」で再オープンのちらつきを防止
+- `MatrixBox`(`Input/MatrixBox.cs`): テンプレートは `PART_Grid` のみで、セル(NumericBox)とヘッダーはコードで構築。セルは内部 VM(`MatrixCell` INPC)に TwoWay バインドし、確定のたびに新しい `double[,]` を作って `Values` を差し替え。null 確定(空欄)はモデル値へ復元。`IsSymmetric` のミラーは配列生成時に (j,i) へ書き込み+ミラー先セル表示を silent 更新
+- ModelTree 名前変更: `FlatTreeItem.IsRenaming`(internal set)を行テンプレートの DataTrigger が参照して TextBox 表示に切替。確定/取消は ModelTree が KeyDown / LostKeyboardFocus のバブリングで一括処理(仮想化行のため個別購読しない)。フォーカスがコントロール外へ移った場合は奪い返さない。名前変更中は ←→ をキャレット移動として素通し
+- `KeyGestureBox`(`Input/KeyGestureBox.cs`): PreviewKeyDown でキャプチャ(Alt 系は `e.SystemKey`)。修飾キー単独は無視、Tab は素通し。妥当性は `new KeyGesture()` の `NotSupportedException` に委譲(WPF 仕様と完全一致)。表示は `GetDisplayStringForCulture`
+- `Wizard` / `StepIndicator`(`Wizard/`): ステップ切替は全 `WizardStep` を Grid 重ねで生存させ Visibility 制御(入力状態保持)。ボタンはテンプレート内 `PART_*` を ClickEvent クラスハンドラで処理。`StepHeaders`(読み取り専用 DP)経由でテンプレート内 StepIndicator にヘッダーを供給。`GoNext()` / `GoBack()` は公開(Navigating 検証込み)
+- **重要な学び**: ItemsControl 派生のカスタムコントロールは WPF 既定の自動化ピアが「アイテムのみ」を UIA に公開し、テンプレート内のボタン等が見えなくなる。`OnCreateAutomationPeer` で `FrameworkElementAutomationPeer` を返して解決(CheckComboBox / Wizard / StepIndicator に適用)
+- UIA 検証: `.dev/scripts/verify-miscinputs.ps1`(チェック連動・すべて選択・対称ミラー・ジェスチャキャプチャ/クリア・CanGoNext 無効化・Finished 発火・F2 名前変更/Esc 取消)
+
 ## 7. テスト方針
 
 - **UI に依存しないロジックのみ** xUnit でテストする:
@@ -309,4 +361,6 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 | **Phase 9 — 入力・ツールバー小物**               | DropDownButton / SplitButton / PathBox / RangeSlider / ColorPicker(ColorEditor) / Vector3Box + PropertyGrid 連携(Path/Color/Vector3 PropertyItem)    | ✅ 完了 (2026-08-01) |
 | **Phase 10 — テーマ網羅+小物**                   | TreeView / ListView(GridView) / PasswordBox / RichTextBox / Hyperlink / Label のスタイル穴埋め + InfoBar / ToggleSwitch / ProgressRing               | ✅ 完了 (2026-08-01) |
 | **Phase 11 — ポスト処理系小物 第2弾**            | PlaybackBar(結果アニメーション再生バー) / ColorScaleEditor(カラーマップ設定エディタ、`ColorScale.Clone()` 追加)                                      | ✅ 完了 (2026-08-01) |
+| **Phase 12 — 小物の最終弾**                      | CheckComboBox / MatrixBox / ModelTree インライン名前変更 / KeyGestureBox / Wizard(StepIndicator)                                                      | ✅ 完了 (2026-08-01) |
 | **(将来)Charts**                                 | 外部ライブラリ(ScottPlot / OxyPlot 等を選定)ベースの別アセンブリ `WpfCustomUI.Charts`。収束モニタ等の CAE 向け複合コントロールを提供                 | 構想                 |
+| **(将来)ドッキング**                             | ツールウィンドウのタブ化・ピン留め・折りたたみ等。実アプリ採用後に要件(フローティング要否・レイアウト保存要否)を確定してから範囲を決める             | 構想                 |

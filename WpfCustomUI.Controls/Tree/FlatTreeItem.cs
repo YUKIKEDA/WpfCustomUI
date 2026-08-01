@@ -9,6 +9,7 @@ namespace WpfCustomUI.Controls;
 public sealed class FlatTreeItem : INotifyPropertyChanged
 {
     private bool _hasChildren;
+    private bool _isRenaming;
 
     internal FlatTreeItem(ITreeNode node, ITreeNode? parent, int level)
     {
@@ -26,6 +27,20 @@ public sealed class FlatTreeItem : INotifyPropertyChanged
 
     /// <summary>ルートを 0 とする深さ。インデント幅の計算に使う。</summary>
     public int Level { get; }
+
+    /// <summary>インライン名前変更中か(行テンプレートが TextBox 表示に使う)。ModelTree が管理する。</summary>
+    public bool IsRenaming
+    {
+        get => _isRenaming;
+        internal set
+        {
+            if (_isRenaming != value)
+            {
+                _isRenaming = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsRenaming)));
+            }
+        }
+    }
 
     /// <summary>子を持つか(展開シェブロンの表示判定)。子の増減で更新される。</summary>
     public bool HasChildren

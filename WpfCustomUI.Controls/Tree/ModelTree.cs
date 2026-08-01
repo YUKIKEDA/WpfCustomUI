@@ -22,8 +22,13 @@ public class ModelTree : Control
     /// <summary>テンプレート内の目アイコンボタンの名前(クリック判定に使用)。</summary>
     internal const string VisibilityTogglePartName = "PART_VisibilityToggle";
 
+    /// <summary>行テンプレート内の名前変更用 TextBox の名前。</summary>
+    internal const string RenameBoxPartName = "PART_RenameBox";
+
     private ListBox? _list;
     private FlatTreeSource? _source;
+    private FlatTreeItem? _renamingItem;
+    private bool _endingRename;
 
     static ModelTree()
     {
@@ -36,6 +41,10 @@ public class ModelTree : Control
         // 目アイコンは仮想化される行テンプレート内にあるため、個別購読ではなく
         // バブリングする Click をコントロール側で一括処理する
         AddHandler(ButtonBase.ClickEvent, new RoutedEventHandler(OnItemButtonClick));
+
+        // 名前変更 TextBox も仮想化行内にあるため、バブリングイベントで一括処理する
+        AddHandler(KeyDownEvent, new KeyEventHandler(OnRenameBoxKeyDown));
+        AddHandler(LostKeyboardFocusEvent, new KeyboardFocusChangedEventHandler(OnRenameBoxLostFocus));
     }
 
     /// <summary>内部 ListBox の選択変更をそのまま転送するイベント。</summary>
@@ -149,11 +158,133 @@ public class ModelTree : Control
         }
     }
 
+    /// <summary>
+    /// ノードのインライン名前変更を開始する(spec 6.12.3)。
+    /// <see cref="IRenamableNode"/> を実装していないノード、または
+    /// 折りたたまれて表示されていないノードには何もしない。
+    /// 確定は Enter / フォーカス喪失、取消は Esc。空白のみの名前は拒否して取消扱い。
+    /// </summary>
+    public void BeginRename(ITreeNode node)
+    {
+        if (node is not IRenamableNode || _source is null || _list is null)
+        {
+            return;
+        }
+
+        var item = _source.Items.FirstOrDefault(i => ReferenceEquals(i.Node, node));
+        if (item is null)
+        {
+            return;
+        }
+
+        EndRename(commit: true);
+        _renamingItem = item;
+        item.IsRenaming = true;
+
+        // 仮想化行が実体化してから TextBox にフォーカスを移す
+        _list.ScrollIntoView(item);
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
+        {
+            if (!ReferenceEquals(_renamingItem, item))
+            {
+                return;
+            }
+
+            var container = _list.ItemContainerGenerator.ContainerFromItem(item) as ListBoxItem;
+            if (FindDescendant<TextBox>(container, RenameBoxPartName) is TextBox box)
+            {
+                box.Focus();
+                box.SelectAll();
+            }
+        });
+    }
+
+    private void OnRenameBoxKeyDown(object sender, KeyEventArgs e)
+    {
+        if (_renamingItem is null ||
+            e.OriginalSource is not TextBox { Name: RenameBoxPartName })
+        {
+            return;
+        }
+
+        if (e.Key == Key.Enter)
+        {
+            e.Handled = true;
+            EndRename(commit: true);
+        }
+        else if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            EndRename(commit: false);
+        }
+    }
+
+    private void OnRenameBoxLostFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (_renamingItem is not null &&
+            e.OriginalSource is TextBox { Name: RenameBoxPartName })
+        {
+            EndRename(commit: true);
+        }
+    }
+
+    private void EndRename(bool commit)
+    {
+        if (_renamingItem is null || _endingRename)
+        {
+            return;
+        }
+
+        _endingRename = true;
+        try
+        {
+            var item = _renamingItem;
+            _renamingItem = null;
+
+            if (commit &&
+                _list?.ItemContainerGenerator.ContainerFromItem(item) is ListBoxItem container &&
+                FindDescendant<TextBox>(container, RenameBoxPartName) is TextBox box &&
+                item.Node is IRenamableNode renamable)
+            {
+                var newName = box.Text.Trim();
+                if (newName.Length > 0)
+                {
+                    renamable.Name = newName;
+                }
+            }
+
+            item.IsRenaming = false;
+
+            // フォーカスがコントロール外へ移った(別コントロールをクリックした)場合は奪い返さない
+            if (IsKeyboardFocusWithin)
+            {
+                FocusItem(item);
+            }
+        }
+        finally
+        {
+            _endingRename = false;
+        }
+    }
+
     protected override void OnPreviewKeyDown(KeyEventArgs e)
     {
         base.OnPreviewKeyDown(e);
         if (e.Handled || _list?.SelectedItem is not FlatTreeItem item)
         {
+            return;
+        }
+
+        // 名前変更中は Left/Right をキャレット移動として TextBox に渡す
+        if (_renamingItem is not null)
+        {
+            return;
+        }
+
+        if (e.Key == Key.F2 && item.Node is IRenamableNode)
+        {
+            BeginRename(item.Node);
+            e.Handled = true;
             return;
         }
 
@@ -224,5 +355,29 @@ public class ModelTree : Control
         }
 
         return current as T;
+    }
+
+    private static T? FindDescendant<T>(DependencyObject? root, string name) where T : FrameworkElement
+    {
+        if (root is null)
+        {
+            return null;
+        }
+
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T typed && typed.Name == name)
+            {
+                return typed;
+            }
+
+            if (FindDescendant<T>(child, name) is T found)
+            {
+                return found;
+            }
+        }
+
+        return null;
     }
 }

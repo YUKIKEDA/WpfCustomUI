@@ -1,0 +1,131 @@
+<UserControl x:Class="WpfCustomUI.Gallery.Pages.MiscInputsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ui="https://schemas.wpfcustomui.dev/xaml"
+             mc:Ignorable="d">
+    <UserControl.Resources>
+        <Style x:Key="SectionHeader" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="{StaticResource Wcu.FontSize.L}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,16,0,8" />
+        </Style>
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Secondary}" />
+            <Setter Property="FontSize" Value="{StaticResource Wcu.FontSize.S}" />
+            <Setter Property="Margin" Value="0,2,0,0" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+    </UserControl.Resources>
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel MaxWidth="780" HorizontalAlignment="Left">
+
+            <TextBlock Text="Misc Inputs &amp; Wizard" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,4" />
+
+            <TextBlock Text="CheckComboBox(複数選択コンボ)" Style="{StaticResource SectionHeader}" />
+            <StackPanel Orientation="Horizontal">
+                <StackPanel Width="240">
+                    <TextBlock Text="結果成分(すべて選択+件数表示)" Margin="0,0,0,4" />
+                    <ui:CheckComboBox x:Name="ComponentCombo"
+                                      SummaryFormat="{}{0} 成分を選択"
+                                      SelectAllContent="(すべて選択)"
+                                      PlaceholderText="成分を選択..." />
+                </StackPanel>
+                <StackPanel Width="240" Margin="24,0,0,0">
+                    <TextBlock Text="荷重ケース(既定=名前連結表示)" Margin="0,0,0,4" />
+                    <ui:CheckComboBox x:Name="CaseCombo"
+                                      DisplayMemberPath="Name"
+                                      PlaceholderText="ケースを選択..." />
+                </StackPanel>
+                <TextBlock x:Name="ComboInfo" Margin="24,20,0,0"
+                           VerticalAlignment="Top"
+                           Foreground="{DynamicResource Wcu.Brush.Text.Secondary}" />
+            </StackPanel>
+            <TextBlock Style="{StaticResource Hint}"
+                       Text="SelectedItems に ObservableCollection をバインド(TwoWay 同期)。左は SummaryFormat による件数表示+「すべて選択」行、右は既定の名前連結表示。" />
+
+            <TextBlock Text="MatrixBox(行列入力)" Style="{StaticResource SectionHeader}" />
+            <StackPanel Orientation="Horizontal">
+                <StackPanel>
+                    <TextBlock Text="直交異方性の弾性率 [GPa](3×3 対称)" Margin="0,0,0,4" />
+                    <ui:MatrixBox x:Name="StiffnessMatrix"
+                                  Width="240"
+                                  IsSymmetric="True"
+                                  Format="G4" />
+                </StackPanel>
+                <StackPanel Margin="24,0,0,0">
+                    <TextBlock Text="座標変換(3×3、ヘッダーなし)" Margin="0,0,0,4" />
+                    <ui:MatrixBox x:Name="TransformMatrix"
+                                  Width="220"
+                                  Format="F2" />
+                </StackPanel>
+                <TextBlock x:Name="MatrixInfo" Margin="24,20,0,0"
+                           VerticalAlignment="Top"
+                           Foreground="{DynamicResource Wcu.Brush.Text.Secondary}"
+                           FontFamily="Consolas" />
+            </StackPanel>
+            <TextBlock Style="{StaticResource Hint}"
+                       Text="Values(double[,])はセル確定のたびに新インスタンスへ差し替わる。左は IsSymmetric=True で (i,j) 編集が (j,i) に自動ミラーされる。" />
+
+            <TextBlock Text="KeyGestureBox(ショートカット入力)" Style="{StaticResource SectionHeader}" />
+            <StackPanel Orientation="Horizontal">
+                <StackPanel Width="240">
+                    <TextBlock Text="ソルバー実行" Margin="0,0,0,4" />
+                    <ui:KeyGestureBox x:Name="RunGestureBox"
+                                      PlaceholderText="キーを押して設定..." />
+                </StackPanel>
+                <TextBlock x:Name="GestureInfo" Margin="24,20,0,0"
+                           VerticalAlignment="Top"
+                           Foreground="{DynamicResource Wcu.Brush.Text.Secondary}" />
+            </StackPanel>
+            <TextBlock Style="{StaticResource Hint}"
+                       Text="フォーカスしてキーを押すと KeyGesture が設定される(文字キーは修飾必須、F1〜F12 等は単独可)。×でクリア、Esc で復元。値は KeyGestureConverter で文字列往復できる。" />
+
+            <TextBlock Text="Wizard / StepIndicator" Style="{StaticResource SectionHeader}" />
+            <Border Background="{DynamicResource Wcu.Brush.Surface.Panel}"
+                    BorderBrush="{DynamicResource Wcu.Brush.Border.Default}"
+                    BorderThickness="1" CornerRadius="2" Padding="16"
+                    Width="560" HorizontalAlignment="Left">
+                <ui:Wizard x:Name="SetupWizard"
+                           MinHeight="200"
+                           BackButtonText="戻る"
+                           NextButtonText="次へ"
+                           FinishButtonText="完了"
+                           CancelButtonText="キャンセル"
+                           Navigating="SetupWizard_Navigating"
+                           Finished="SetupWizard_Finished"
+                           Cancelled="SetupWizard_Cancelled">
+                    <ui:WizardStep Header="解析タイプ">
+                        <StackPanel>
+                            <TextBlock Text="実行する解析の種類を選択してください。" Margin="0,0,0,8" />
+                            <RadioButton Content="静解析" IsChecked="True" Margin="0,2" />
+                            <RadioButton Content="固有値解析" Margin="0,2" />
+                            <RadioButton Content="時刻歴応答解析" Margin="0,2" />
+                        </StackPanel>
+                    </ui:WizardStep>
+                    <ui:WizardStep Header="条件設定">
+                        <StackPanel>
+                            <TextBlock Text="解析条件を入力してください。" Margin="0,0,0,8" />
+                            <CheckBox x:Name="ConditionCheck"
+                                      Content="境界条件を確認した(チェックしないと「次へ」が無効)"
+                                      Checked="ConditionCheck_Changed"
+                                      Unchecked="ConditionCheck_Changed" />
+                        </StackPanel>
+                    </ui:WizardStep>
+                    <ui:WizardStep Header="確認">
+                        <StackPanel>
+                            <TextBlock Text="設定内容を確認して「完了」を押してください。" Margin="0,0,0,8" />
+                            <TextBlock Text="解析タイプ: 静解析 / 境界条件: 確認済み"
+                                       Foreground="{DynamicResource Wcu.Brush.Text.Secondary}" />
+                        </StackPanel>
+                    </ui:WizardStep>
+                </ui:Wizard>
+            </Border>
+            <TextBlock x:Name="WizardInfo" Style="{StaticResource Hint}"
+                       Text="CanGoNext を Step 2 のチェックボックスにバインド(宣言的無効化)。Navigating イベントでも直前拒否できる。完了/キャンセルはイベントをアプリが処理してダイアログを閉じる。" />
+
+            <Border Height="24" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
