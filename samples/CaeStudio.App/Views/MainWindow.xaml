@@ -1,0 +1,383 @@
+<ui:WcuWindow x:Class="CaeStudio.App.Views.MainWindow"
+              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+              xmlns:ui="https://schemas.wpfcustomui.dev/xaml"
+              xmlns:b="http://schemas.microsoft.com/xaml/behaviors"
+              xmlns:behaviors="clr-namespace:CaeStudio.App.Behaviors"
+              xmlns:ad="clr-namespace:AvalonDock;assembly=AvalonDock"
+              xmlns:adl="clr-namespace:AvalonDock.Layout;assembly=AvalonDock"
+              Title="{Binding WindowTitle.Value, Mode=OneWay}"
+              Width="1400" Height="900"
+              WindowStartupLocation="CenterScreen">
+
+    <ui:WcuWindow.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+    </ui:WcuWindow.Resources>
+
+    <!-- タイトルバー埋め込みメニュー(VS 風高密度レイアウト) -->
+    <ui:WcuWindow.TitleBarContent>
+        <Menu VerticalAlignment="Center" Background="Transparent">
+            <MenuItem Header="ファイル(_F)">
+                <MenuItem Header="新規解析(_N)..."
+                          Command="{Binding NewProjectCommand}"
+                          InputGestureText="Ctrl+N" />
+                <MenuItem Header="開く(_O)..."
+                          AutomationProperties.AutomationId="OpenMenuItem"
+                          Command="{Binding OpenCommand}"
+                          InputGestureText="Ctrl+O" />
+                <MenuItem Header="最近使ったファイル(_R)"
+                          ItemsSource="{Binding RecentFiles}">
+                    <MenuItem.ItemContainerStyle>
+                        <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                            <Setter Property="Header" Value="{Binding}" />
+                            <Setter Property="Command"
+                                    Value="{Binding DataContext.OpenRecentCommand,
+                                        RelativeSource={RelativeSource AncestorType=Menu}}" />
+                            <Setter Property="CommandParameter" Value="{Binding}" />
+                        </Style>
+                    </MenuItem.ItemContainerStyle>
+                </MenuItem>
+                <Separator />
+                <MenuItem Header="保存(_S)"
+                          AutomationProperties.AutomationId="SaveMenuItem"
+                          Command="{Binding SaveCommand}"
+                          InputGestureText="Ctrl+S" />
+                <MenuItem Header="名前を付けて保存(_A)..."
+                          AutomationProperties.AutomationId="SaveAsMenuItem"
+                          Command="{Binding SaveAsCommand}" />
+                <Separator />
+                <MenuItem Header="設定(_T)..."
+                          AutomationProperties.AutomationId="SettingsMenuItem"
+                          Command="{Binding SettingsCommand}" />
+            </MenuItem>
+            <MenuItem Header="表示(_V)">
+                <MenuItem Header="全体表示(_F)" Command="{Binding FitViewCommand}" InputGestureText="F8" />
+                <Separator />
+                <MenuItem Header="ライトテーマ(_L)"
+                          AutomationProperties.AutomationId="ThemeMenuItem"
+                          IsCheckable="True"
+                          IsChecked="{Binding IsLightTheme.Value, Mode=TwoWay}" />
+            </MenuItem>
+        </Menu>
+    </ui:WcuWindow.TitleBarContent>
+
+    <ui:WcuWindow.InputBindings>
+        <KeyBinding Modifiers="Ctrl" Key="N" Command="{Binding NewProjectCommand}" />
+        <KeyBinding Modifiers="Ctrl" Key="O" Command="{Binding OpenCommand}" />
+        <KeyBinding Modifiers="Ctrl" Key="S" Command="{Binding SaveCommand}" />
+        <KeyBinding Key="F8" Command="{Binding FitViewCommand}" />
+        <!-- 解析実行のショートカットは設定に従い code-behind で動的登録する -->
+    </ui:WcuWindow.InputBindings>
+
+    <Grid>
+        <DockPanel>
+            <!-- ツールバー -->
+            <ToolBarTray DockPanel.Dock="Top">
+                <ToolBar>
+                    <Button Content="新規解析"
+                            AutomationProperties.AutomationId="NewProjectButton"
+                            Command="{Binding NewProjectCommand}" />
+                    <Separator />
+                    <!-- 本体クリック = 現在の解析タイプで実行、▼ = タイプを選んで実行 -->
+                    <ui:SplitButton Content="解析実行"
+                                    AutomationProperties.AutomationId="RunButton"
+                                    Command="{Binding RunCommand}">
+                        <ui:SplitButton.DropDownMenu>
+                            <ContextMenu>
+                                <MenuItem Header="静解析を実行"
+                                          AutomationProperties.AutomationId="RunStaticMenuItem"
+                                          Command="{Binding RunStaticCommand}" />
+                                <MenuItem Header="固有値解析を実行"
+                                          AutomationProperties.AutomationId="RunModalMenuItem"
+                                          Command="{Binding RunModalCommand}" />
+                            </ContextMenu>
+                        </ui:SplitButton.DropDownMenu>
+                    </ui:SplitButton>
+                    <Button Content="キャンセル"
+                            AutomationProperties.AutomationId="CancelButton"
+                            Command="{Binding CancelCommand}" />
+                    <Separator />
+                    <Button Content="全体表示"
+                            AutomationProperties.AutomationId="FitButton"
+                            Command="{Binding FitViewCommand}" />
+                    <ui:DropDownButton Content="視点"
+                                       AutomationProperties.AutomationId="ViewButton">
+                        <ui:DropDownButton.DropDownMenu>
+                            <ContextMenu>
+                                <MenuItem Header="等角"
+                                          Command="{Binding SetViewCommand}" CommandParameter="Isometric" />
+                                <MenuItem Header="正面 (XY)"
+                                          Command="{Binding SetViewCommand}" CommandParameter="Front" />
+                                <MenuItem Header="上面"
+                                          Command="{Binding SetViewCommand}" CommandParameter="Top" />
+                                <MenuItem Header="右側面"
+                                          Command="{Binding SetViewCommand}" CommandParameter="Right" />
+                            </ContextMenu>
+                        </ui:DropDownButton.DropDownMenu>
+                    </ui:DropDownButton>
+                    <Separator />
+                    <ui:ToggleSwitch Content="プローブ"
+                                     AutomationProperties.AutomationId="ProbeToggle"
+                                     IsChecked="{Binding IsProbeEnabled.Value, Mode=TwoWay}" />
+                    <Button Content="注釈クリア"
+                            AutomationProperties.AutomationId="ClearAnnotationsButton"
+                            Command="{Binding ClearAnnotationsCommand}" />
+                    <Separator />
+                    <TextBlock Text="変形倍率"
+                               VerticalAlignment="Center" Margin="8,0,4,0" />
+                    <ui:NumericBox Width="90"
+                                   AutomationProperties.AutomationId="DeformationScaleBox"
+                                   Value="{Binding DeformationScale.Value, Mode=TwoWay}"
+                                   Minimum="0" Maximum="1000000" Increment="10" />
+                    <Separator />
+                    <ui:CheckComboBox Width="150"
+                                      AutomationProperties.AutomationId="DisplayOptions"
+                                      ItemsSource="{Binding DisplayOptions}"
+                                      SelectedItems="{Binding SelectedDisplayOptions}"
+                                      PlaceholderText="表示項目"
+                                      SelectAllContent="すべて" />
+                </ToolBar>
+            </ToolBarTray>
+
+            <!-- ステータスバー -->
+            <StatusBar DockPanel.Dock="Bottom">
+                <StatusBarItem>
+                    <TextBlock AutomationProperties.AutomationId="StatusText"
+                               Text="{Binding StatusText.Value, Mode=OneWay}" />
+                </StatusBarItem>
+                <Separator />
+                <StatusBarItem>
+                    <TextBlock AutomationProperties.AutomationId="MeshStatsText"
+                               Text="{Binding MeshStatsText.Value, Mode=OneWay}" />
+                </StatusBarItem>
+                <Separator />
+                <StatusBarItem HorizontalContentAlignment="Stretch">
+                    <ui:ProgressDisplay MaxWidth="420"
+                                        HorizontalAlignment="Left"
+                                        IsIndeterminate="True"
+                                        IsRunning="{Binding IsRunning.Value, Mode=OneWay}"
+                                        Text="{Binding ProgressText.Value, Mode=OneWay}"
+                                        CancelCommand="{Binding CancelCommand}"
+                                        CancelText="中止"
+                                        Visibility="{Binding IsRunning.Value, Converter={StaticResource BoolToVisibility}}" />
+                </StatusBarItem>
+            </StatusBar>
+
+            <!-- ドッキングシェル -->
+            <ad:DockingManager x:Name="DockManager">
+                <ad:DockingManager.Theme>
+                    <ui:WcuDockTheme />
+                </ad:DockingManager.Theme>
+
+                <adl:LayoutRoot>
+                    <adl:LayoutPanel Orientation="Horizontal">
+
+                        <!-- 左: モデルツリー -->
+                        <adl:LayoutAnchorablePane DockWidth="240">
+                            <adl:LayoutAnchorable Title="モデル" ContentId="Cae.Model" CanClose="False">
+                                <DockPanel Background="{DynamicResource Wcu.Brush.Surface.Window}">
+                                    <ui:SearchBox DockPanel.Dock="Top"
+                                                  Margin="4"
+                                                  AutomationProperties.AutomationId="TreeSearch"
+                                                  Placeholder="ツリーを検索..."
+                                                  SearchText="{Binding TreeFilter.Value, Mode=TwoWay}" />
+                                    <ui:ModelTree ItemsSource="{Binding TreeItems}"
+                                                  SelectionMode="Single"
+                                                  ShowVisibilityToggles="False">
+                                        <b:Interaction.Behaviors>
+                                            <behaviors:ModelTreeSelectionBehavior
+                                                SelectionChangedCommand="{Binding TreeSelectionCommand}" />
+                                        </b:Interaction.Behaviors>
+                                    </ui:ModelTree>
+                                </DockPanel>
+                            </adl:LayoutAnchorable>
+                        </adl:LayoutAnchorablePane>
+
+                        <!-- 中央: ビューポート+下部(収束モニタ/ログ) -->
+                        <adl:LayoutPanel Orientation="Vertical">
+                            <adl:LayoutDocumentPane>
+                                <adl:LayoutDocument Title="ビューポート" ContentId="Cae.Viewport" CanClose="False">
+                                    <DockPanel Background="{DynamicResource Wcu.Brush.Surface.Window}">
+                                        <ui:InfoBar DockPanel.Dock="Top"
+                                                    Severity="Warning"
+                                                    Title="再解析が必要"
+                                                    Message="入力が変更されています。［解析実行］で結果を更新してください。"
+                                                    IsOpen="{Binding IsResultStale.Value, Mode=TwoWay}" />
+                                        <!-- 位相スイープ再生(固有値解析の結果表示中のみ) -->
+                                        <ui:PlaybackBar DockPanel.Dock="Bottom"
+                                                        AutomationProperties.AutomationId="PhasePlayback"
+                                                        FrameCount="60"
+                                                        FramesPerSecond="30"
+                                                        IsLooping="True"
+                                                        CurrentFrame="{Binding PhaseFrame.Value, Mode=TwoWay}"
+                                                        Visibility="{Binding IsModalResult.Value,
+                                                            Converter={StaticResource BoolToVisibility}}" />
+                                        <!-- BusyOverlay: メッシュ再生成中の表示(入力編集→デバウンス生成の間) -->
+                                        <ui:BusyOverlay IsBusy="{Binding IsMeshBuilding.Value, Mode=OneWay}"
+                                                        BusyText="メッシュ生成中...">
+                                            <ui:WcuViewport AutomationProperties.AutomationId="Viewport"
+                                                            MeshSource="{Binding Meshes}"
+                                                            ColorScale="{Binding ResultScale}"
+                                                            DeformationScale="{Binding EffectiveDeformationScale.Value, Mode=OneWay}"
+                                                            ShowUndeformedWireframe="{Binding ShowUndeformedWireframe.Value, Mode=OneWay}"
+                                                            PickMode="{Binding PickMode.Value, Mode=OneWay}">
+                                                <b:Interaction.Behaviors>
+                                                    <behaviors:ViewportFitBehavior
+                                                        FitRequest="{Binding FitRequest.Value, Mode=OneWay}" />
+                                                    <behaviors:ViewportStandardViewBehavior
+                                                        Request="{Binding ViewRequest.Value, Mode=OneWay}" />
+                                                    <behaviors:ViewportProbeBehavior
+                                                        ProbeCommand="{Binding ProbeCommand}"
+                                                        LabelFormatter="{Binding ProbeLabelFormatter}"
+                                                        ClearRequest="{Binding AnnotationClearRequest.Value, Mode=OneWay}" />
+                                                </b:Interaction.Behaviors>
+                                            </ui:WcuViewport>
+                                        </ui:BusyOverlay>
+                                    </DockPanel>
+                                </adl:LayoutDocument>
+                            </adl:LayoutDocumentPane>
+
+                            <adl:LayoutAnchorablePane DockHeight="230">
+                                <adl:LayoutAnchorable Title="収束モニタ" ContentId="Cae.Convergence" CanClose="False">
+                                    <!-- 軸ラベルは英語(ScottPlot 既定フォントが日本語グリフ非対応のため) -->
+                                    <ui:ConvergenceMonitor SeriesSource="{Binding ResidualSeries}"
+                                                           XLabel="Iteration"
+                                                           YLabel="Relative residual" />
+                                </adl:LayoutAnchorable>
+                                <adl:LayoutAnchorable Title="パスプロット" ContentId="Cae.PathPlot" CanClose="False">
+                                    <!-- 円孔平板の静解析のみ描画(y 軸上の von Mises vs Kirsch 厳密解) -->
+                                    <ui:WcuPlot>
+                                        <b:Interaction.Behaviors>
+                                            <behaviors:PathPlotBehavior
+                                                Source="{Binding PathPlot.Value, Mode=OneWay}" />
+                                        </b:Interaction.Behaviors>
+                                    </ui:WcuPlot>
+                                </adl:LayoutAnchorable>
+                                <adl:LayoutAnchorable Title="ヒストグラム" ContentId="Cae.Histogram" CanClose="False">
+                                    <ui:HistogramChart Values="{Binding HistogramValues.Value, Mode=OneWay}"
+                                                       BinCount="40"
+                                                       XLabel="von Mises [MPa]" />
+                                </adl:LayoutAnchorable>
+                                <adl:LayoutAnchorable Title="周波数応答" ContentId="Cae.Frf" CanClose="False">
+                                    <ui:FrequencyResponsePlot SeriesSource="{Binding FrfSeries}"
+                                                              ShowPhase="True"
+                                                              MagnitudeInDecibels="True"
+                                                              XLabel="Frequency [Hz]" />
+                                </adl:LayoutAnchorable>
+                                <adl:LayoutAnchorable Title="スタディ" ContentId="Cae.Study" CanClose="False">
+                                    <!-- メッシュ細分化スタディ(分割数を変えた解析の収束履歴。HistoryChart の実演) -->
+                                    <DockPanel Background="{DynamicResource Wcu.Brush.Surface.Window}">
+                                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="8,6">
+                                            <Button Content="スタディ実行"
+                                                    AutomationProperties.AutomationId="StudyButton"
+                                                    Command="{Binding StudyCommand}" />
+                                            <TextBlock Margin="12,0,0,0"
+                                                       VerticalAlignment="Center"
+                                                       AutomationProperties.AutomationId="StudyStatus"
+                                                       Foreground="{DynamicResource Wcu.Brush.Text.Secondary}"
+                                                       Text="{Binding StudyStatusText.Value, Mode=OneWay}" />
+                                        </StackPanel>
+                                        <ui:HistoryChart SeriesSource="{Binding StudySeries}"
+                                                         XLabel="Degrees of freedom"
+                                                         YLabel="Metric" />
+                                    </DockPanel>
+                                </adl:LayoutAnchorable>
+                                <adl:LayoutAnchorable Title="ログ" ContentId="Cae.Log" CanClose="False">
+                                    <ui:LogConsole Source="{Binding Log}" />
+                                </adl:LayoutAnchorable>
+                            </adl:LayoutAnchorablePane>
+                        </adl:LayoutPanel>
+
+                        <!-- 右: プロパティ+凡例 -->
+                        <adl:LayoutAnchorablePane DockWidth="300">
+                            <adl:LayoutAnchorable Title="プロパティ" ContentId="Cae.Properties" CanClose="False">
+                                <ui:PropertyGrid ItemsSource="{Binding PropertyItems.Value, Mode=OneWay}" />
+                            </adl:LayoutAnchorable>
+                            <adl:LayoutAnchorable Title="モード" ContentId="Cae.Modes" CanClose="False">
+                                <DockPanel Background="{DynamicResource Wcu.Brush.Surface.Window}">
+                                    <TextBlock DockPanel.Dock="Top"
+                                               Margin="8,8,8,4"
+                                               TextWrapping="Wrap"
+                                               Foreground="{DynamicResource Wcu.Brush.Text.Secondary}"
+                                               Text="固有値解析を実行すると振動数一覧が表示されます。行選択でモード形状を切替、下部の再生バーで位相スイープします。" />
+                                    <DataGrid AutomationProperties.AutomationId="ModeTable"
+                                              ItemsSource="{Binding ModeRows}"
+                                              SelectedItem="{Binding SelectedMode.Value, Mode=TwoWay}"
+                                              AutoGenerateColumns="False"
+                                              IsReadOnly="True"
+                                              SelectionMode="Single"
+                                              CanUserAddRows="False"
+                                              HeadersVisibility="Column">
+                                        <DataGrid.Columns>
+                                            <DataGridTextColumn Header="#" Width="36"
+                                                                Binding="{Binding Index}" />
+                                            <DataGridTextColumn Header="f [Hz]" Width="*"
+                                                                Binding="{Binding FrequencyText}" />
+                                            <DataGridTextColumn Header="理論 [Hz]" Width="*"
+                                                                Binding="{Binding TheoryText}" />
+                                            <DataGridTextColumn Header="誤差" Width="70"
+                                                                Binding="{Binding ErrorText}" />
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+                                </DockPanel>
+                            </adl:LayoutAnchorable>
+                            <adl:LayoutAnchorable Title="材料剛性" ContentId="Cae.Material" CanClose="False">
+                                <!-- 平面応力の弾性マトリクス D(材料プロパティから自動計算。MatrixBox の実演) -->
+                                <ScrollViewer Background="{DynamicResource Wcu.Brush.Surface.Window}"
+                                              VerticalScrollBarVisibility="Auto">
+                                    <StackPanel Margin="16">
+                                        <TextBlock TextWrapping="Wrap"
+                                                   Foreground="{DynamicResource Wcu.Brush.Text.Secondary}"
+                                                   Text="平面応力の弾性マトリクス D [MPa]。材料のヤング率・ポアソン比から自動計算されます(読み取り専用)。" />
+                                        <ui:MatrixBox Margin="0,12,0,0"
+                                                      AutomationProperties.AutomationId="ElasticityMatrix"
+                                                      Rows="3" Columns="3"
+                                                      IsSymmetric="True"
+                                                      IsEnabled="False"
+                                                      Format="N0"
+                                                      Values="{Binding ElasticityMatrix.Value, Mode=OneWay}" />
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </adl:LayoutAnchorable>
+                            <adl:LayoutAnchorable Title="凡例" ContentId="Cae.Legend" CanClose="False">
+                                <ScrollViewer Background="{DynamicResource Wcu.Brush.Surface.Window}"
+                                              VerticalScrollBarVisibility="Auto">
+                                    <StackPanel Margin="16">
+                                        <ui:ColorMapLegend Title="{Binding LegendTitle.Value, Mode=OneWay}"
+                                                           Scale="{Binding ResultScale}"
+                                                           Height="240"
+                                                           HorizontalAlignment="Left" />
+                                        <TextBlock Text="コンター範囲"
+                                                   Margin="0,16,0,4"
+                                                   Foreground="{DynamicResource Wcu.Brush.Text.Secondary}" />
+                                        <ui:RangeSlider AutomationProperties.AutomationId="ContourRange"
+                                                        Minimum="0"
+                                                        Maximum="{Binding RangeMaximum.Value, Mode=OneWay}"
+                                                        LowerValue="{Binding RangeLower.Value, Mode=TwoWay}"
+                                                        UpperValue="{Binding RangeUpper.Value, Mode=TwoWay}" />
+                                        <ui:ColorScaleEditor Scale="{Binding ResultScale}"
+                                                             Margin="0,16,0,0"
+                                                             ColorMapLabel="カラーマップ"
+                                                             MinimumLabel="最小値"
+                                                             MaximumLabel="最大値"
+                                                             DiscreteLevelsLabel="離散レベル"
+                                                             LogarithmicLabel="対数スケール" />
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </adl:LayoutAnchorable>
+                        </adl:LayoutAnchorablePane>
+                    </adl:LayoutPanel>
+                </adl:LayoutRoot>
+            </ad:DockingManager>
+        </DockPanel>
+
+        <!-- トースト通知(最前面オーバーレイ) -->
+        <ui:ToastHost HorizontalAlignment="Right"
+                      VerticalAlignment="Bottom"
+                      Margin="0,0,24,44">
+            <b:Interaction.Behaviors>
+                <behaviors:ToastBehavior Requests="{Binding Toasts}" />
+            </b:Interaction.Behaviors>
+        </ui:ToastHost>
+    </Grid>
+</ui:WcuWindow>

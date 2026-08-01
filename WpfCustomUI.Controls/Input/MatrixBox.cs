@@ -1,6 +1,7 @@
 using System.Collections;
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 
 namespace WpfCustomUI.Controls;
@@ -28,6 +29,10 @@ public class MatrixBox : Control
         DefaultStyleKeyProperty.OverrideMetadata(
             typeof(MatrixBox), new FrameworkPropertyMetadata(typeof(MatrixBox)));
     }
+
+    // Control 既定はピアなしで UIA ツリーに現れない。AutomationId / 子 NumericBox を公開する
+    protected override AutomationPeer OnCreateAutomationPeer() =>
+        new FrameworkElementAutomationPeer(this);
 
     #region Dependency properties
 

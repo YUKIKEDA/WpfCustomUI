@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
@@ -33,6 +34,10 @@ public class SearchBox : Control
         _timer.Tick += (_, _) => Commit();
         AddHandler(ButtonBase.ClickEvent, new RoutedEventHandler(OnClearButtonClick));
     }
+
+    // Control 既定はピアなしで UIA ツリーに現れない。AutomationId / 子 Edit を公開する
+    protected override AutomationPeer OnCreateAutomationPeer() =>
+        new FrameworkElementAutomationPeer(this);
 
     public static readonly DependencyProperty TextProperty = DependencyProperty.Register(
         nameof(Text), typeof(string), typeof(SearchBox),

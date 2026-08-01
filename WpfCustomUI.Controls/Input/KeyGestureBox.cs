@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Windows;
+using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
@@ -30,6 +31,9 @@ public class KeyGestureBox : Control
         EventManager.RegisterClassHandler(
             typeof(KeyGestureBox), ButtonBase.ClickEvent, new RoutedEventHandler(OnButtonClick));
     }
+
+    protected override AutomationPeer OnCreateAutomationPeer() =>
+        new FrameworkElementAutomationPeer(this);
 
     public static readonly DependencyProperty GestureProperty = DependencyProperty.Register(
         nameof(Gesture), typeof(KeyGesture), typeof(KeyGestureBox),

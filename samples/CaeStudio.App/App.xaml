@@ -1,0 +1,9 @@
+<Application x:Class="CaeStudio.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="https://schemas.wpfcustomui.dev/xaml"
+             ShutdownMode="OnMainWindowClose">
+    <Application.Resources>
+        <ui:WcuTheme Theme="Dark" />
+    </Application.Resources>
+</Application>

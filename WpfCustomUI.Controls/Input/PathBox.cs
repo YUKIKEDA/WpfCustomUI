@@ -1,5 +1,6 @@
 using System.IO;
 using System.Windows;
+using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using Microsoft.Win32;
@@ -32,6 +33,9 @@ public class PathBox : Control
         DefaultStyleKeyProperty.OverrideMetadata(
             typeof(PathBox), new FrameworkPropertyMetadata(typeof(PathBox)));
     }
+
+    protected override AutomationPeer OnCreateAutomationPeer() =>
+        new FrameworkElementAutomationPeer(this);
 
     public static readonly DependencyProperty SelectedPathProperty = DependencyProperty.Register(
         nameof(SelectedPath), typeof(string), typeof(PathBox),

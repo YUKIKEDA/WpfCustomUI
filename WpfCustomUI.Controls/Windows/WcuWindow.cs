@@ -47,7 +47,7 @@ public class WcuWindow : Window
     public static readonly DependencyProperty TitleBarContentProperty =
         DependencyProperty.Register(
             nameof(TitleBarContent), typeof(object), typeof(WcuWindow),
-            new PropertyMetadata(null));
+            new PropertyMetadata(null, OnTitleBarContentChanged));
 
     /// <summary>
     /// タイトル文字列とキャプションボタンの間に表示する任意コンテンツ。
@@ -58,5 +58,29 @@ public class WcuWindow : Window
     {
         get => GetValue(TitleBarContentProperty);
         set => SetValue(TitleBarContentProperty, value);
+    }
+
+    protected override void OnPropertyChanged(DependencyPropertyChangedEventArgs e)
+    {
+        base.OnPropertyChanged(e);
+        if (e.Property == DataContextProperty)
+        {
+            SyncTitleBarDataContext();
+        }
+    }
+
+    private static void OnTitleBarContentChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
+        ((WcuWindow)d).SyncTitleBarDataContext();
+
+    /// <summary>
+    /// TitleBarContent はテンプレートの ContentPresenter に載るため、
+    /// Window.DataContext がメニュー等へ伝わらないことがある。明示伝播する。
+    /// </summary>
+    private void SyncTitleBarDataContext()
+    {
+        if (TitleBarContent is FrameworkElement element)
+        {
+            element.DataContext = DataContext;
+        }
     }
 }
