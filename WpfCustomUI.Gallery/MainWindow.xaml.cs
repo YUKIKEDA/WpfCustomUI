@@ -13,6 +13,7 @@ namespace WpfCustomUI.Gallery
             ("Inputs & Buttons", () => new InputsPage()),
             ("Navigation & Menus", () => new NavigationPage()),
             ("NumericBox & Expander", () => new NumericPage()),
+            ("Pickers & Range", () => new PickersPage()),
             ("PropertyGrid", () => new PropertyGridPage()),
             ("ModelTree", () => new ModelTreePage()),
             ("ColorMap 凡例", () => new ColorMapPage()),

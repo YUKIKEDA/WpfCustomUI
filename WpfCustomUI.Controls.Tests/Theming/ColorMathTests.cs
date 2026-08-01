@@ -90,5 +90,61 @@ namespace WpfCustomUI.Controls.Tests.Theming
 
             Assert.Equal(baseH, lightenedH, 0);
         }
+
+        // ================= HSV(ColorEditor 用。spec 6.9.4) =================
+
+        [Theory]
+        [InlineData(0x00, 0x7A, 0xCC)]
+        [InlineData(0xFF, 0xFF, 0xFF)]
+        [InlineData(0x00, 0x00, 0x00)]
+        [InlineData(0xE8, 0x11, 0x23)]
+        [InlineData(0x16, 0xC6, 0x0C)]
+        [InlineData(0x88, 0x6C, 0xE4)]
+        public void ToHsv_FromHsv_Roundtrip(byte r, byte g, byte b)
+        {
+            var original = Color.FromRgb(r, g, b);
+            var (h, s, v) = ColorMath.ToHsv(original);
+            var roundTripped = ColorMath.FromHsv(h, s, v);
+
+            // 丸め誤差として各チャンネル ±1 を許容
+            Assert.InRange(roundTripped.R, Math.Max(0, r - 1), Math.Min(255, r + 1));
+            Assert.InRange(roundTripped.G, Math.Max(0, g - 1), Math.Min(255, g + 1));
+            Assert.InRange(roundTripped.B, Math.Max(0, b - 1), Math.Min(255, b + 1));
+        }
+
+        [Fact]
+        public void ToHsv_PureRed_ReturnsExpectedValues()
+        {
+            var (h, s, v) = ColorMath.ToHsv(Color.FromRgb(0xFF, 0x00, 0x00));
+
+            Assert.Equal(0, h, 3);
+            Assert.Equal(1, s, 3);
+            Assert.Equal(1, v, 3);
+        }
+
+        [Fact]
+        public void ToHsv_Black_HasZeroValue()
+        {
+            var (_, s, v) = ColorMath.ToHsv(Color.FromRgb(0x00, 0x00, 0x00));
+
+            Assert.Equal(0, s, 3);
+            Assert.Equal(0, v, 3);
+        }
+
+        [Fact]
+        public void ToHsv_Gray_HasZeroSaturation()
+        {
+            var (_, s, v) = ColorMath.ToHsv(Color.FromRgb(0x80, 0x80, 0x80));
+
+            Assert.Equal(0, s, 3);
+            Assert.Equal(0x80 / 255.0, v, 3);
+        }
+
+        [Fact]
+        public void FromHsv_HueWrapsAround()
+        {
+            // 360° と 0° は同じ色(赤)
+            Assert.Equal(ColorMath.FromHsv(0, 1, 1), ColorMath.FromHsv(360, 1, 1));
+        }
     }
 }

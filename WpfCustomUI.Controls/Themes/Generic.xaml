@@ -9,6 +9,11 @@
     <ResourceDictionary.MergedDictionaries>
         <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/NumericBox.xaml" />
         <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/SearchBox.xaml" />
+        <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/DropDownButton.xaml" />
+        <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/PathBox.xaml" />
+        <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/RangeSlider.xaml" />
+        <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/Vector3Box.xaml" />
+        <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/ColorPicker.xaml" />
         <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/PropertyGrid.xaml" />
         <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/ModelTree.xaml" />
         <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/ColorMapLegend.xaml" />

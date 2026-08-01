@@ -38,6 +38,35 @@
                   IsEnabled="{Binding IsEditable}" />
     </DataTemplate>
 
+    <DataTemplate DataType="{x:Type wcu:PathPropertyItem}">
+        <wcu:PathBox SelectedPath="{Binding Value, Mode=TwoWay}"
+                     Mode="{Binding Mode}"
+                     Filter="{Binding Filter}"
+                     DialogTitle="{Binding DialogTitle}"
+                     IsReadOnly="{Binding IsReadOnly}" />
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type wcu:ColorPropertyItem}">
+        <wcu:ColorPicker SelectedColor="{Binding Value, Mode=TwoWay}"
+                         IsAlphaEnabled="{Binding IsAlphaEnabled}"
+                         IsEnabled="{Binding IsEditable}"
+                         HorizontalAlignment="Left"
+                         MinWidth="64" />
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type wcu:Vector3PropertyItem}">
+        <wcu:Vector3Box X="{Binding X, Mode=TwoWay}"
+                        Y="{Binding Y, Mode=TwoWay}"
+                        Z="{Binding Z, Mode=TwoWay}"
+                        Minimum="{Binding Minimum}"
+                        Maximum="{Binding Maximum}"
+                        Increment="{Binding Increment}"
+                        Unit="{Binding Unit}"
+                        UnitProvider="{Binding UnitProvider}"
+                        Format="{Binding Format}"
+                        IsReadOnly="{Binding IsReadOnly}" />
+    </DataTemplate>
+
     <!-- ================= PropertyGrid 本体 ================= -->
 
     <Style TargetType="{x:Type wcu:PropertyGrid}">

@@ -1,0 +1,405 @@
+<!--
+    ColorEditor / ColorPicker の既定スタイル(spec 6.9.4)。
+    SV 面のサムネイル位置と HueBrush / AlphaTrackBrush / PreviewBrush の更新は
+    コード側(ColorEditor)が行う。テンプレート内の Freezable(GradientStop 等)への
+    TemplatedParent バインドは解決できないため、ブラシは読み取り専用 DP として公開されている。
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:wcu="clr-namespace:WpfCustomUI.Controls">
+
+    <!-- 透明部分の下敷きにする市松模様 -->
+    <DrawingBrush x:Key="Wcu.ColorEditor.CheckerBrush"
+                  TileMode="Tile"
+                  Viewport="0,0,8,8"
+                  ViewportUnits="Absolute"
+                  Stretch="None">
+        <DrawingBrush.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="#FFFFFF">
+                    <GeometryDrawing.Geometry>
+                        <RectangleGeometry Rect="0,0,8,8" />
+                    </GeometryDrawing.Geometry>
+                </GeometryDrawing>
+                <GeometryDrawing Brush="#B0B0B0">
+                    <GeometryDrawing.Geometry>
+                        <GeometryGroup>
+                            <RectangleGeometry Rect="0,0,4,4" />
+                            <RectangleGeometry Rect="4,4,4,4" />
+                        </GeometryGroup>
+                    </GeometryDrawing.Geometry>
+                </GeometryDrawing>
+            </DrawingGroup>
+        </DrawingBrush.Drawing>
+    </DrawingBrush>
+
+    <!-- スライダー共通部品 -->
+    <Style x:Key="Wcu.ColorEditor.PageButton" TargetType="{x:Type RepeatButton}">
+        <Setter Property="IsTabStop" Value="False" />
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type RepeatButton}">
+                    <Rectangle Fill="Transparent" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="Wcu.ColorEditor.SliderThumb" TargetType="{x:Type Thumb}">
+        <Setter Property="IsTabStop" Value="False" />
+        <Setter Property="Width" Value="14" />
+        <Setter Property="Height" Value="14" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type Thumb}">
+                    <Grid>
+                        <Ellipse Stroke="#80000000" StrokeThickness="3.5" />
+                        <Ellipse Stroke="White" StrokeThickness="2" Margin="0.75" />
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 色相スライダー(0-360、レインボートラック) -->
+    <Style x:Key="Wcu.ColorEditor.HueSlider" TargetType="{x:Type Slider}">
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="IsMoveToPointEnabled" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type Slider}">
+                    <Grid MinHeight="14">
+                        <Border Height="10" VerticalAlignment="Center" CornerRadius="2">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                    <GradientStop Color="#FF0000" Offset="0" />
+                                    <GradientStop Color="#FFFF00" Offset="0.167" />
+                                    <GradientStop Color="#00FF00" Offset="0.333" />
+                                    <GradientStop Color="#00FFFF" Offset="0.5" />
+                                    <GradientStop Color="#0000FF" Offset="0.667" />
+                                    <GradientStop Color="#FF00FF" Offset="0.833" />
+                                    <GradientStop Color="#FF0000" Offset="1" />
+                                </LinearGradientBrush>
+                            </Border.Background>
+                        </Border>
+                        <Track x:Name="PART_Track">
+                            <Track.DecreaseRepeatButton>
+                                <RepeatButton Style="{StaticResource Wcu.ColorEditor.PageButton}"
+                                              Command="Slider.DecreaseLarge" />
+                            </Track.DecreaseRepeatButton>
+                            <Track.Thumb>
+                                <Thumb Style="{StaticResource Wcu.ColorEditor.SliderThumb}" />
+                            </Track.Thumb>
+                            <Track.IncreaseRepeatButton>
+                                <RepeatButton Style="{StaticResource Wcu.ColorEditor.PageButton}"
+                                              Command="Slider.IncreaseLarge" />
+                            </Track.IncreaseRepeatButton>
+                        </Track>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- アルファスライダー(市松+透明→現在色のグラデーション) -->
+    <Style x:Key="Wcu.ColorEditor.AlphaSlider" TargetType="{x:Type Slider}">
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="IsMoveToPointEnabled" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type Slider}">
+                    <Grid MinHeight="14">
+                        <Border Height="10" VerticalAlignment="Center" CornerRadius="2"
+                                Background="{StaticResource Wcu.ColorEditor.CheckerBrush}" />
+                        <Border Height="10" VerticalAlignment="Center" CornerRadius="2"
+                                Background="{Binding AlphaTrackBrush, RelativeSource={RelativeSource AncestorType={x:Type wcu:ColorEditor}}}" />
+                        <Track x:Name="PART_Track">
+                            <Track.DecreaseRepeatButton>
+                                <RepeatButton Style="{StaticResource Wcu.ColorEditor.PageButton}"
+                                              Command="Slider.DecreaseLarge" />
+                            </Track.DecreaseRepeatButton>
+                            <Track.Thumb>
+                                <Thumb Style="{StaticResource Wcu.ColorEditor.SliderThumb}" />
+                            </Track.Thumb>
+                            <Track.IncreaseRepeatButton>
+                                <RepeatButton Style="{StaticResource Wcu.ColorEditor.PageButton}"
+                                              Command="Slider.IncreaseLarge" />
+                            </Track.IncreaseRepeatButton>
+                        </Track>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ================= ColorEditor 本体 ================= -->
+
+    <Style TargetType="{x:Type wcu:ColorEditor}">
+        <Setter Property="MinWidth" Value="220" />
+        <Setter Property="IsTabStop" Value="False" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type wcu:ColorEditor}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="140" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <!-- SV 面(彩度=横、明度=縦) -->
+                        <Grid>
+                            <Border CornerRadius="2" Background="{TemplateBinding HueBrush}" />
+                            <Border CornerRadius="2">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                        <GradientStop Color="#FFFFFFFF" Offset="0" />
+                                        <GradientStop Color="#00FFFFFF" Offset="1" />
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                            </Border>
+                            <Border CornerRadius="2">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                        <GradientStop Color="#00000000" Offset="0" />
+                                        <GradientStop Color="#FF000000" Offset="1" />
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                            </Border>
+                            <Canvas x:Name="PART_SvCanvas" Background="Transparent" ClipToBounds="False">
+                                <Grid x:Name="PART_SvThumb" Width="12" Height="12" IsHitTestVisible="False">
+                                    <Ellipse Stroke="#80000000" StrokeThickness="3" />
+                                    <Ellipse Stroke="White" StrokeThickness="1.5" Margin="0.75" />
+                                </Grid>
+                            </Canvas>
+                        </Grid>
+
+                        <!-- 色相 -->
+                        <Slider Grid.Row="1"
+                                Margin="0,8,0,0"
+                                Style="{StaticResource Wcu.ColorEditor.HueSlider}"
+                                Minimum="0" Maximum="360"
+                                Value="{Binding Hue, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" />
+
+                        <!-- アルファ -->
+                        <Slider x:Name="AlphaSlider"
+                                Grid.Row="2"
+                                Margin="0,6,0,0"
+                                Style="{StaticResource Wcu.ColorEditor.AlphaSlider}"
+                                Minimum="0" Maximum="255"
+                                Value="{Binding Alpha, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" />
+
+                        <!-- プレビュー + Hex -->
+                        <Grid Grid.Row="3" Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid Width="32" Margin="0,0,8,0">
+                                <Border CornerRadius="2"
+                                        Background="{StaticResource Wcu.ColorEditor.CheckerBrush}" />
+                                <Border CornerRadius="2"
+                                        Background="{TemplateBinding PreviewBrush}"
+                                        BorderBrush="{DynamicResource Wcu.Brush.Border.Default}"
+                                        BorderThickness="1" />
+                            </Grid>
+                            <TextBox x:Name="PART_HexBox"
+                                     Grid.Column="1"
+                                     VerticalContentAlignment="Center"
+                                     CharacterCasing="Upper" />
+                        </Grid>
+
+                        <!-- RGBA 数値入力 -->
+                        <Grid Grid.Row="4" Margin="0,6,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <DockPanel>
+                                <TextBlock Text="R" DockPanel.Dock="Left" Margin="0,0,4,0"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource Wcu.Brush.Text.Secondary}" />
+                                <wcu:NumericBox Minimum="0" Maximum="255" Increment="1" Format="F0"
+                                                Value="{Binding Red, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" />
+                            </DockPanel>
+                            <DockPanel Grid.Column="1" Margin="6,0,0,0">
+                                <TextBlock Text="G" DockPanel.Dock="Left" Margin="0,0,4,0"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource Wcu.Brush.Text.Secondary}" />
+                                <wcu:NumericBox Minimum="0" Maximum="255" Increment="1" Format="F0"
+                                                Value="{Binding Green, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" />
+                            </DockPanel>
+                            <DockPanel Grid.Column="2" Margin="6,0,0,0">
+                                <TextBlock Text="B" DockPanel.Dock="Left" Margin="0,0,4,0"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource Wcu.Brush.Text.Secondary}" />
+                                <wcu:NumericBox Minimum="0" Maximum="255" Increment="1" Format="F0"
+                                                Value="{Binding Blue, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" />
+                            </DockPanel>
+                            <DockPanel x:Name="AlphaField" Grid.Column="3" Margin="6,0,0,0">
+                                <TextBlock Text="A" DockPanel.Dock="Left" Margin="0,0,4,0"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource Wcu.Brush.Text.Secondary}" />
+                                <wcu:NumericBox Minimum="0" Maximum="255" Increment="1" Format="F0"
+                                                Value="{Binding Alpha, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" />
+                            </DockPanel>
+                        </Grid>
+
+                        <!-- パレット -->
+                        <ItemsControl Grid.Row="5"
+                                      Margin="0,8,0,0"
+                                      Focusable="False"
+                                      ItemsSource="{TemplateBinding Palette}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Columns="8" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <!-- クリックは ColorEditor のクラスハンドラが Name で判定して拾う -->
+                                    <Button x:Name="PaletteSwatch"
+                                            Height="18"
+                                            Margin="1"
+                                            Focusable="False"
+                                            ToolTip="{Binding}"
+                                            AutomationProperties.Name="{Binding}">
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="{x:Type Button}">
+                                                <Grid>
+                                                    <Border x:Name="Swatch"
+                                                            CornerRadius="2"
+                                                            BorderBrush="{DynamicResource Wcu.Brush.Border.Default}"
+                                                            BorderThickness="1">
+                                                        <Border.Background>
+                                                            <SolidColorBrush Color="{Binding}" />
+                                                        </Border.Background>
+                                                    </Border>
+                                                </Grid>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Swatch" Property="BorderBrush"
+                                                                Value="{DynamicResource Wcu.Brush.Accent.Default}" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsAlphaEnabled" Value="False">
+                            <Setter TargetName="AlphaSlider" Property="Visibility" Value="Collapsed" />
+                            <Setter TargetName="AlphaField" Property="Visibility" Value="Collapsed" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ================= ColorPicker(ドロップダウン型) ================= -->
+
+    <Style TargetType="{x:Type wcu:ColorPicker}">
+        <Setter Property="MinHeight" Value="{DynamicResource Wcu.ControlHeight}" />
+        <Setter Property="MinWidth" Value="48" />
+        <Setter Property="FocusVisualStyle" Value="{DynamicResource Wcu.FocusVisual}" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type wcu:ColorPicker}">
+                    <Grid>
+                        <ToggleButton x:Name="PART_Toggle"
+                                      Focusable="False"
+                                      IsTabStop="False"
+                                      IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="{x:Type ToggleButton}">
+                                    <Border x:Name="Root"
+                                            Background="{DynamicResource Wcu.Brush.Control.Background}"
+                                            BorderBrush="{DynamicResource Wcu.Brush.Border.Default}"
+                                            BorderThickness="1"
+                                            CornerRadius="{DynamicResource Wcu.CornerRadius}">
+                                        <Grid Margin="4,2">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid>
+                                                <Border CornerRadius="2"
+                                                        Background="{StaticResource Wcu.ColorEditor.CheckerBrush}" />
+                                                <Border CornerRadius="2"
+                                                        Background="{Binding PreviewBrush, RelativeSource={RelativeSource AncestorType={x:Type wcu:ColorPicker}}}"
+                                                        BorderBrush="{DynamicResource Wcu.Brush.Border.Strong}"
+                                                        BorderThickness="1" />
+                                            </Grid>
+                                            <Path Grid.Column="1"
+                                                  Data="M 0,0 L 3,3 L 6,0"
+                                                  Stroke="{DynamicResource Wcu.Brush.Text.Secondary}"
+                                                  StrokeThickness="1.2"
+                                                  VerticalAlignment="Center"
+                                                  Margin="6,1,2,0" />
+                                        </Grid>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Root" Property="BorderBrush"
+                                                    Value="{DynamicResource Wcu.Brush.Border.Strong}" />
+                                            <Setter TargetName="Root" Property="Background"
+                                                    Value="{DynamicResource Wcu.Brush.Control.Hover}" />
+                                        </Trigger>
+                                        <Trigger Property="IsChecked" Value="True">
+                                            <Setter TargetName="Root" Property="BorderBrush"
+                                                    Value="{DynamicResource Wcu.Brush.Border.Focus}" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                        </ToggleButton>
+                        <Popup x:Name="PART_Popup"
+                               StaysOpen="False"
+                               AllowsTransparency="True"
+                               Placement="Bottom"
+                               VerticalOffset="2"
+                               IsOpen="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                            <Border Background="{DynamicResource Wcu.Brush.Surface.Elevated}"
+                                    BorderBrush="{DynamicResource Wcu.Brush.Border.Default}"
+                                    BorderThickness="1"
+                                    CornerRadius="{DynamicResource Wcu.CornerRadius}"
+                                    Padding="10">
+                                <wcu:ColorEditor Width="300"
+                                                 SelectedColor="{Binding SelectedColor, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                                                 IsAlphaEnabled="{Binding IsAlphaEnabled, RelativeSource={RelativeSource TemplatedParent}}"
+                                                 Palette="{Binding Palette, RelativeSource={RelativeSource TemplatedParent}}" />
+                            </Border>
+                        </Popup>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <!--
+                            ポップアップ表示中はトグルをヒットテスト対象外にする。
+                            外側クリックで先にポップアップが閉じるため、そのクリックがトグルに
+                            届いて即再オープンする定番の問題を避ける。
+                        -->
+                        <Trigger Property="IsDropDownOpen" Value="True">
+                            <Setter TargetName="PART_Toggle" Property="IsHitTestVisible" Value="False" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.6" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+</ResourceDictionary>

@@ -1,0 +1,140 @@
+<UserControl x:Class="WpfCustomUI.Gallery.Pages.PickersPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ui="https://schemas.wpfcustomui.dev/xaml"
+             mc:Ignorable="d">
+    <UserControl.Resources>
+        <Style x:Key="SectionHeader" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="{StaticResource Wcu.FontSize.L}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,16,0,8" />
+        </Style>
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Secondary}" />
+            <Setter Property="FontSize" Value="{StaticResource Wcu.FontSize.S}" />
+            <Setter Property="Margin" Value="0,2,0,0" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+
+        <ContextMenu x:Key="ViewPresetMenu">
+            <MenuItem Header="正面 (Front)" Click="ViewPreset_Click" />
+            <MenuItem Header="上面 (Top)" Click="ViewPreset_Click" />
+            <MenuItem Header="右側面 (Right)" Click="ViewPreset_Click" />
+            <Separator />
+            <MenuItem Header="等角投影 (Isometric)" Click="ViewPreset_Click" />
+        </ContextMenu>
+
+        <ContextMenu x:Key="SolveOptionsMenu">
+            <MenuItem Header="実行(現在の設定)" Click="SolveOption_Click" />
+            <MenuItem Header="メッシュ再生成してから実行" Click="SolveOption_Click" />
+            <MenuItem Header="バッチキューに追加..." Click="SolveOption_Click" />
+        </ContextMenu>
+    </UserControl.Resources>
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel MaxWidth="760" HorizontalAlignment="Left">
+
+            <TextBlock Text="Pickers &amp; Range" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,4" />
+
+            <TextBlock Text="DropDownButton / SplitButton" Style="{StaticResource SectionHeader}" />
+            <StackPanel Orientation="Horizontal">
+                <ui:DropDownButton Content="ビュー"
+                                   DropDownMenu="{StaticResource ViewPresetMenu}"
+                                   Margin="0,0,8,0" />
+                <ui:SplitButton x:Name="SolveButton"
+                                Content="解析実行"
+                                Click="Solve_Click"
+                                DropDownMenu="{StaticResource SolveOptionsMenu}" />
+            </StackPanel>
+            <TextBlock x:Name="DropDownResult" Style="{StaticResource Hint}"
+                       Text="DropDownButton は全体でメニュー、SplitButton は左が Command 実行・右の ▼ がメニュー。F4 / Alt+↓ でも開く。" />
+
+            <TextBlock Text="PathBox(ファイル/フォルダ選択)" Style="{StaticResource SectionHeader}" />
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="110" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBlock Text="メッシュファイル" VerticalAlignment="Center" />
+                <ui:PathBox x:Name="OpenPathBox" Grid.Column="1" Margin="0,2"
+                            Mode="OpenFile"
+                            DialogTitle="メッシュファイルを開く"
+                            Filter="Mesh files (*.msh;*.inp)|*.msh;*.inp|All files (*.*)|*.*" />
+                <TextBlock Grid.Row="1" Text="結果の保存先" VerticalAlignment="Center" />
+                <ui:PathBox Grid.Row="1" Grid.Column="1" Margin="0,2"
+                            Mode="SaveFile"
+                            Filter="Result files (*.vtk)|*.vtk" />
+                <TextBlock Grid.Row="2" Text="作業フォルダ" VerticalAlignment="Center" />
+                <ui:PathBox Grid.Row="2" Grid.Column="1" Margin="0,2" Mode="Folder" />
+            </Grid>
+            <TextBlock Style="{StaticResource Hint}"
+                       Text="… ボタンで標準ダイアログ(開く/保存/フォルダ)。直接入力も可。BrowseRequested を購読すればアプリ独自ダイアログに差し替えられる。" />
+
+            <TextBlock Text="Vector3Box(XYZ まとめ入力)" Style="{StaticResource SectionHeader}" />
+            <ui:Vector3Box x:Name="ForceVector" MaxWidth="480" HorizontalAlignment="Left"
+                           X="0" Y="0" Z="-9.8" Unit="m/s²" Format="G4" />
+            <TextBlock Margin="0,4,0,0">
+                <Run Text="値 = (" /><Run Text="{Binding ElementName=ForceVector, Path=X}" /><Run Text=", " /><Run Text="{Binding ElementName=ForceVector, Path=Y}" /><Run Text=", " /><Run Text="{Binding ElementName=ForceVector, Path=Z}" /><Run Text=")" />
+            </TextBlock>
+            <TextBlock Style="{StaticResource Hint}"
+                       Text="重力加速度ベクトルの例。NumericBox と同じ nullable 規約(空欄 = 未入力)で、単位・範囲は3軸共通。" />
+
+            <TextBlock Text="RangeSlider(コンター範囲の指定)" Style="{StaticResource SectionHeader}" />
+            <StackPanel Orientation="Horizontal">
+                <ui:ColorMapLegend x:Name="RangeLegend" Height="180" Title="応力 [MPa]" />
+                <StackPanel Width="280" Margin="24,0,0,0" VerticalAlignment="Center">
+                    <ui:RangeSlider x:Name="ContourRange"
+                                    Minimum="0" Maximum="500"
+                                    LowerValue="100" UpperValue="350" />
+                    <TextBlock Margin="0,8,0,0">
+                        <Run Text="{Binding ElementName=ContourRange, Path=LowerValue, StringFormat='Min = {0:F0}'}" />
+                        <Run Text=" / " />
+                        <Run Text="{Binding ElementName=ContourRange, Path=UpperValue, StringFormat='Max = {0:F0}'}" />
+                    </TextBlock>
+                    <TextBlock Style="{StaticResource Hint}"
+                               Text="両端の Thumb で下限/上限を個別に、中央のバーをドラッグすると幅を保ったまま範囲全体をスライドできる。凡例(ColorScale)の Min/Max に連動。" />
+                    <ui:RangeSlider Margin="0,16,0,0" Minimum="0" Maximum="100"
+                                    LowerValue="20" UpperValue="60" IsEnabled="False" />
+                    <TextBlock Style="{StaticResource Hint}" Text="無効状態" />
+                </StackPanel>
+                <ui:RangeSlider Orientation="Vertical" Height="180" Margin="32,0,0,0"
+                                Minimum="0" Maximum="1" LowerValue="0.25" UpperValue="0.75" />
+            </StackPanel>
+
+            <TextBlock Text="ColorPicker / ColorEditor" Style="{StaticResource SectionHeader}" />
+            <StackPanel Orientation="Horizontal">
+                <StackPanel Width="260">
+                    <TextBlock Text="ドロップダウン型(アルファ対応)" Margin="0,0,0,4" />
+                    <ui:ColorPicker x:Name="PartColorPicker" Width="72" HorizontalAlignment="Left"
+                                    SelectedColor="#CC0078D7" />
+                    <TextBlock Margin="0,4,0,0"
+                               Text="{Binding ElementName=PartColorPicker, Path=SelectedColor, StringFormat='SelectedColor = {0}'}" />
+                    <TextBlock Text="アルファ無効(常に不透明)" Margin="0,16,0,4" />
+                    <ui:ColorPicker Width="72" HorizontalAlignment="Left"
+                                    SelectedColor="#E81123" IsAlphaEnabled="False" />
+                    <TextBlock Style="{StaticResource Hint}" Margin="0,16,0,0"
+                               Text="スウォッチをクリックするとポップアップで ColorEditor が開く。パレットは RGB のみ適用し、現在のアルファは維持される。" />
+                </StackPanel>
+                <StackPanel Margin="32,0,0,0">
+                    <TextBlock Text="インライン埋め込み(ColorEditor)" Margin="0,0,0,4" />
+                    <Border Background="{DynamicResource Wcu.Brush.Surface.Panel}"
+                            BorderBrush="{DynamicResource Wcu.Brush.Border.Default}"
+                            BorderThickness="1"
+                            CornerRadius="2"
+                            Padding="10"
+                            HorizontalAlignment="Left">
+                        <ui:ColorEditor Width="300" SelectedColor="#FF16C60C" />
+                    </Border>
+                </StackPanel>
+            </StackPanel>
+
+            <Border Height="24" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

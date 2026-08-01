@@ -175,6 +175,43 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 - **ToastHost(通知トースト)**: 明示的ホスト方式。アプリがレイアウトに ToastHost を 1 つ置き、`host.Show(メッセージ, レベル, 表示時間)` で表示。ウィンドウ自動検出の静的 API は採らない(仕組みが透明で MVVM と相性が良い)
 - **BusyOverlay**: ContentControl ラッパー方式。任意の領域を `<ui:BusyOverlay IsBusy="...">` で囲むと、半透明ベール+スピナー+メッセージで内側への入力を遮断。部分適用(ビューポートだけブロック等)が可能
 
+## 6.9 第3弾スコープ — 入力・ツールバー小物
+
+(2026-08-01 の設計インタビューで決定)
+
+- **狙い**: CAE で使用頻度が高いのに WPF 標準に存在しない入力・ツールバー小物を揃える。シェル拡張(ドキュメントタブ/Wizard)・軽量チャート・テーマ網羅(PasswordBox 等)は今回見送り(チャートは工数大のため着手時に別アセンブリ化を含めて再議論)
+
+### 6.9.1 DropDownButton / SplitButton
+
+- **ContextMenu 流用方式**: `DropDownMenu` プロパティに ContextMenu を指定してボタン押下で開く。スタイル・キーボード操作・UIA が既存の Menu 資産でそのまま効く(CAE ツールバーの用途はほぼメニュー項目の列挙)
+- **SplitButton**: 左半分が `Command` 実行、右の ▼ が同じメニューを開く姉妹コントロール
+
+### 6.9.2 PathBox
+
+- 参照ボタン(...)付きのファイル/フォルダパス入力欄
+- **ダイアログ内蔵方式**: `Microsoft.Win32` の OpenFileDialog / SaveFileDialog / OpenFolderDialog を直接呼ぶ(WPF 標準の一部なのでゼロ依存を維持。.NET 10 ターゲットのため OpenFolderDialog も使用可)
+- `Mode`(OpenFile / SaveFile / Folder)と `Filter` を DP で公開。`BrowseRequested` イベントを Handled 可能にして、アプリがダイアログ呼び出しを差し替えられる口を残す
+
+### 6.9.3 RangeSlider
+
+- `Minimum` / `Maximum` / `LowerValue` / `UpperValue`、縦横対応
+- **中央の選択範囲バー自体のドラッグに対応**: 範囲幅を保ったまま両端を同時に移動できる(コンター範囲の「幅そのままスライド」)
+- ColorMapLegend と連携するデモをギャラリーに用意する
+
+### 6.9.4 ColorPicker
+
+- **2部品構成**: 選択 UI 本体の `ColorEditor`(HSV 面+色相スライダー+Hex/RGB 入力+パレット)と、それをポップアップで開くスウォッチボタン型 `ColorPicker`。ダイアログ埋め込みとツールバー利用の両方に対応
+- **アルファ対応**: A スライダー+8桁 Hex(パーツの半透明表示が定番のため)。`IsAlphaEnabled` で非表示化可能
+
+### 6.9.5 Vector3Box
+
+- XYZ まとめ入力(NumericBox×3 の複合)
+- **X / Y / Z を個別の double? DP で公開**: NumericBox と同じ nullable 規約で「未入力」を表現し、VM プロパティにそのままバインド可能。単位(`IUnitProvider`)・min/max は3軸共通で一括指定
+
+### 6.9.6 PropertyGrid 連携
+
+- 新規入力系に対応する派生を同フェーズで追加: `PathPropertyItem` / `ColorPropertyItem` / `Vector3PropertyItem`(派生クラス+DataTemplate 各1つの薄いラッパー)
+
 ## 7. テスト方針
 
 - **UI に依存しないロジックのみ** xUnit でテストする:
@@ -186,14 +223,15 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 
 ## 8. 実装フェーズ
 
-| フェーズ                                         | 内容                                                                                                                                                 | 状態                  |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| フェーズ                                         | 内容                                                                                                                                                 | 状態                 |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
 | **Phase 0 — 基盤**                               | `WpfCustomUI.Controls` へ改名、`XmlnsDefinition`、デザイントークン定義、ダークテーマ辞書、ギャラリー骨格、テストプロジェクト追加                     | ✅ 完了 (2026-07-31) |
 | **Phase 1 — 標準コントロールスタイル(コア集合)** | Button / TextBox / ComboBox / CheckBox / ScrollBar / TabControl / Menu / ToolTip / Slider / ProgressBar など、CAE コントロールの部品になるものを優先 | ✅ 完了 (2026-07-31) |
 | **Phase 2 — 部品系 CAE コントロール**            | 単位付き数値入力、グループパネル/Expander(他の部品になるため先行)                                                                                    | ✅ 完了 (2026-07-31) |
 | **Phase 3 — プロパティグリッド**                 | Phase 2 のエディタを利用                                                                                                                             | ✅ 完了 (2026-08-01) |
 | **Phase 4 — モデルツリー**                       | フラット化ツリー。ロジックのテスト重点                                                                                                               | ✅ 完了 (2026-08-01) |
 | **Phase 5 — 独立系**                             | ログコンソール / 進捗表示 / カラーマップ凡例(相互独立なので順不同)                                                                                   | ✅ 完了 (2026-08-01) |
-| **Phase 6 — シェル軽量群**                       | GridSplitter / GroupBox / Separator / ToolBar / StatusBar / SearchBox(+PropertyGrid フィルタ改修)                                                   | ✅ 完了 (2026-08-01) |
+| **Phase 6 — シェル軽量群**                       | GridSplitter / GroupBox / Separator / ToolBar / StatusBar / SearchBox(+PropertyGrid フィルタ改修)                                                    | ✅ 完了 (2026-08-01) |
 | **Phase 7 — ウィンドウ系**                       | WcuWindow(クローム) / WcuDialogWindow / WcuMessageBox / ToastHost / BusyOverlay                                                                      | ✅ 完了 (2026-08-01) |
-| **Phase 8 — DataGrid**                           | 標準 DataGrid のフルスタイル化(最大工数のため独立フェーズ)                                                                                          | ✅ 完了 (2026-08-01) |
+| **Phase 8 — DataGrid**                           | 標準 DataGrid のフルスタイル化(最大工数のため独立フェーズ)                                                                                           | ✅ 完了 (2026-08-01) |
+| **Phase 9 — 入力・ツールバー小物**               | DropDownButton / SplitButton / PathBox / RangeSlider / ColorPicker(ColorEditor) / Vector3Box + PropertyGrid 連携(Path/Color/Vector3 PropertyItem)    | ✅ 完了 (2026-08-01) |

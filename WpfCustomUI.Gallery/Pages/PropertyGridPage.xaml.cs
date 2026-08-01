@@ -78,6 +78,33 @@ namespace WpfCustomUI.Gallery.Pages
             };
             _items.Add(_thickness);
 
+            // Phase 9 で追加したエディタ(Path / Color / Vector3)
+            _items.Add(new PathPropertyItem
+            {
+                Name = "メッシュファイル",
+                Category = "入力データ",
+                Description = "参照ボタンでファイルダイアログを開く",
+                Mode = PathBoxMode.OpenFile,
+                Filter = "Mesh files (*.msh;*.inp)|*.msh;*.inp|All files (*.*)|*.*",
+            });
+            _items.Add(new ColorPropertyItem
+            {
+                Name = "パーツ色",
+                Category = "表示",
+                Description = "3D ビューでの表示色(アルファ = 透明度)",
+                Value = System.Windows.Media.Color.FromArgb(0xCC, 0x00, 0x78, 0xD7),
+            });
+            _items.Add(new Vector3PropertyItem
+            {
+                Name = "荷重方向",
+                Category = "解析設定",
+                Description = "荷重の方向ベクトル",
+                X = 0,
+                Y = 0,
+                Z = -1,
+                Format = "G4",
+            });
+
             _analysisType = new ChoicePropertyItem
             {
                 Name = "解析タイプ",
