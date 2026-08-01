@@ -24,6 +24,7 @@ namespace WpfCustomUI.Gallery
             ("DataGrid", () => new DataGridPage()),
             ("More Controls", () => new MoreControlsPage()),
             ("Misc Inputs & Wizard", () => new MiscInputsPage()),
+            ("Docking", () => new DockingPage()),
         ];
 
         public MainWindow()
@@ -48,6 +49,13 @@ namespace WpfCustomUI.Gallery
                     MessageBoxImage.Question));
             }
 
+            // --dockshell: 起動直後にドッキングシェルデモを開く(見た目確認・スクリーンショット用)
+            if (Environment.GetCommandLineArgs().Contains("--dockshell"))
+            {
+                Loaded += (_, _) => Dispatcher.BeginInvoke(() =>
+                    new DockingShellWindow { Owner = this }.Show());
+            }
+
             // --smoke: 全ページを一度生成して XAML・リソース解決のエラーを検出し、即終了する
             if (Environment.GetCommandLineArgs().Contains("--smoke"))
             {
@@ -55,6 +63,9 @@ namespace WpfCustomUI.Gallery
                 {
                     _ = createPage();
                 }
+
+                // ドッキングシェルも XAML・テーマ解決の検証対象に含める
+                _ = new DockingShellWindow();
 
                 Application.Current.Shutdown(0);
             }

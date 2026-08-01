@@ -1,0 +1,57 @@
+<UserControl x:Class="WpfCustomUI.Gallery.Pages.DockingPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ui="https://schemas.wpfcustomui.dev/xaml"
+             mc:Ignorable="d">
+    <UserControl.Resources>
+        <Style x:Key="SectionHeader" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,20,0,8" />
+        </Style>
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Secondary}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Margin" Value="0,4,0,0" />
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel MaxWidth="760" HorizontalAlignment="Left">
+            <TextBlock Text="Docking(WpfCustomUI.Docking)" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,12" />
+
+            <ui:InfoBar Severity="Info"
+                        Title="別アセンブリ"
+                        Message="ドッキングは外部ライブラリ(Dirkster.AvalonDock, MS-PL)に依存するため、コア(WpfCustomUI.Controls)とは別の WpfCustomUI.Docking アセンブリで提供する。ドッキング不要のアプリは参照しなければ依存ゼロのまま。"
+                        IsClosable="False" />
+
+            <TextBlock Text="フルシェルデモ" Style="{StaticResource SectionHeader}" />
+            <TextBlock Style="{StaticResource Hint}"
+                       Text="CAE アプリの典型構成(モデルツリー / ビューポート / プロパティ / 凡例 / ログ)を別ウィンドウで開く。タブのドラッグ&amp;ドロップ、ドッキングガイド、フローティングウィンドウ、自動非表示(ピン)、レイアウト保存・復元を試せる。" />
+            <Button x:Name="LaunchButton"
+                    Content="シェルデモを開く"
+                    Style="{DynamicResource Wcu.Button.Accent}"
+                    HorizontalAlignment="Left"
+                    Margin="0,10,0,0"
+                    Padding="16,6"
+                    Click="OnLaunchShell" />
+
+            <TextBlock Text="提供するもの" Style="{StaticResource SectionHeader}" />
+            <TextBlock Style="{StaticResource Hint}">
+                <Run Text="・WcuDockTheme — AvalonDock の VS2013 テーマ機構(ResourceKeys)に Wcu トークンを流し込んだドックテーマ。テーマ切替・アクセント変更に実行時追従し、フローティングウィンドウにも適用される。" /><LineBreak />
+                <Run Text="・DockLayout — レイアウト保存・復元の静的ヘルパー(Save / SaveToString / Load / LoadFromString)。復元時のコンテンツ再結線は ContentId ベースのリゾルバに委譲し、廃止済みペインは自動で破棄される。" /><LineBreak />
+                <Run Text="・DockingManager や LayoutAnchorable など AvalonDock の型はそのまま公開(薄いラッパー方針)。" />
+            </TextBlock>
+
+            <TextBlock Text="操作のヒント" Style="{StaticResource SectionHeader}" />
+            <TextBlock Style="{StaticResource Hint}">
+                <Run Text="・ツールウィンドウのタブやキャプションをドラッグすると、ドッキングガイド(十字)が表示される。ガイドに重ねてドロップすると上下左右・中央タブ化に配置できる。" /><LineBreak />
+                <Run Text="・ガイド外でドロップするとフローティングウィンドウになる(マルチモニタ対応)。" /><LineBreak />
+                <Run Text="・キャプションのピンで自動非表示(サイドタブ化)、× で非表示。「表示」メニューから再表示できる。" /><LineBreak />
+                <Run Text="・「レイアウト」メニューで現在の配置を保存し、後から復元・既定に戻すことができる。" /><LineBreak />
+                <Run Text="・Ctrl+Tab でドキュメント/ツールウィンドウのナビゲーターを表示。" />
+            </TextBlock>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

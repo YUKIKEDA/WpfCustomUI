@@ -29,6 +29,16 @@
     <Color x:Key="Wcu.Color.Blue.600">#005A9E</Color>
     <Color x:Key="Wcu.Color.Blue.900">#094771</Color>
 
+    <!--
+        アクセントの現在値(ThemeManager.SetAccent で実行時に上書きされ得る色キー)。
+        ブラシを直接使えない場所(外部ライブラリのテーマ再配色など)は
+        この色キーを DynamicResource で参照するとアクセント変更に追従できる。
+    -->
+    <Color x:Key="Wcu.Color.Accent.Default">#007ACC</Color>
+    <Color x:Key="Wcu.Color.Accent.Hover">#1C97EA</Color>
+    <Color x:Key="Wcu.Color.Accent.Pressed">#005A9E</Color>
+    <Color x:Key="Wcu.Color.Accent.Muted">#094771</Color>
+
     <!-- ステータス -->
     <Color x:Key="Wcu.Color.Red.500">#F14C4C</Color>
     <Color x:Key="Wcu.Color.Yellow.500">#CCA700</Color>
@@ -57,13 +67,13 @@
     <!-- Border -->
     <SolidColorBrush x:Key="Wcu.Brush.Border.Default" Color="{StaticResource Wcu.Color.Gray.700}" />
     <SolidColorBrush x:Key="Wcu.Brush.Border.Strong" Color="{StaticResource Wcu.Color.Gray.600}" />
-    <SolidColorBrush x:Key="Wcu.Brush.Border.Focus" Color="{StaticResource Wcu.Color.Blue.500}" />
+    <SolidColorBrush x:Key="Wcu.Brush.Border.Focus" Color="{StaticResource Wcu.Color.Accent.Default}" />
 
     <!-- Accent(ThemeManager.SetAccent で上書きされ得るキー) -->
-    <SolidColorBrush x:Key="Wcu.Brush.Accent.Default" Color="{StaticResource Wcu.Color.Blue.500}" />
-    <SolidColorBrush x:Key="Wcu.Brush.Accent.Hover" Color="{StaticResource Wcu.Color.Blue.400}" />
-    <SolidColorBrush x:Key="Wcu.Brush.Accent.Pressed" Color="{StaticResource Wcu.Color.Blue.600}" />
-    <SolidColorBrush x:Key="Wcu.Brush.Accent.Muted" Color="{StaticResource Wcu.Color.Blue.900}" />
+    <SolidColorBrush x:Key="Wcu.Brush.Accent.Default" Color="{StaticResource Wcu.Color.Accent.Default}" />
+    <SolidColorBrush x:Key="Wcu.Brush.Accent.Hover" Color="{StaticResource Wcu.Color.Accent.Hover}" />
+    <SolidColorBrush x:Key="Wcu.Brush.Accent.Pressed" Color="{StaticResource Wcu.Color.Accent.Pressed}" />
+    <SolidColorBrush x:Key="Wcu.Brush.Accent.Muted" Color="{StaticResource Wcu.Color.Accent.Muted}" />
 
     <!-- State(ホバー等は半透明白のオーバーレイ) -->
     <SolidColorBrush x:Key="Wcu.Brush.State.Hover" Color="#14FFFFFF" />

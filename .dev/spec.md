@@ -336,6 +336,49 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 - **重要な学び**: ItemsControl 派生のカスタムコントロールは WPF 既定の自動化ピアが「アイテムのみ」を UIA に公開し、テンプレート内のボタン等が見えなくなる。`OnCreateAutomationPeer` で `FrameworkElementAutomationPeer` を返して解決(CheckComboBox / Wizard / StepIndicator に適用)
 - UIA 検証: `.dev/scripts/verify-miscinputs.ps1`(チェック連動・すべて選択・対称ミラー・ジェスチャキャプチャ/クリア・CanGoNext 無効化・Finished 発火・F2 名前変更/Esc 取消)
 
+## 6.13 ドッキングシステム(Phase 13)
+
+(2026-08-01 の設計インタビューで決定)
+
+### 6.13.1 スコープと方式
+
+- **機能スコープは VS 完全型(L)**: フローティングウィンドウ必須、マルチモニタ、ドッキングガイド、タブ化、自動隠し(ピン留め)、レイアウト保存/復元
+- **Dirkster.AvalonDock v5 を採用**(スクラッチしない)。判断根拠:
+  - フルセットのスクラッチは月単位の工数で、WPF の OSS で完遂例が AvalonDock 以外に事実上ないことが難度の証明
+  - v5 は .NET 10 対応済みで保守が活発。MS-PL + Apache 2.0 デュアルライセンスで商用利用も無償
+  - 採用実績: Stride(ゲームエンジン)、Macad3D(OSS 3D CAD)、Microsoft Profile Explorer 等
+- **依存ゼロ方針の初の例外**として、新プロジェクト `WpfCustomUI.Docking` に依存を隔離する(`WpfCustomUI.Controls` コアは依存ゼロを維持。Charts で予定していた「外部依存は別アセンブリ」パターンの適用)
+
+### 6.13.2 提供物(ラップは薄く)
+
+- **完全ファサードは作らない**(ドッキングの抽象化は典型的な「漏れる抽象化」であり、WPF に代替ライブラリがない以上、差し替え保険の価値も低い)。AvalonDock の型(DockingManager / LayoutAnchorable 等)はアプリへ素通しする
+- **① WcuDockTheme(`Theme` 派生)**: AvalonDock 公式のテーマ拡張点(`DockingManager.Theme`)に乗る。MS-PL の VS2013 Dark テーマ XAML をフォークし、色を `Wcu.Brush.*` トークンへの `DynamicResource` 参照に置換。フローティングウィンドウにも正しく伝播し、将来のライトテーマにもトークン差し替えで追従
+  - 暗黙スタイル上書き方式は不採用(テーマ機構の迂回はフローティングウィンドウにリソースが届かない問題を踏む)
+  - 置換は「目に付く要素(タブ・タイトルバー・自動隠しサイドバー・ドッキングガイド)から順」に段階的に進める。初回は細部が VS2013 Dark のままでも成立
+- **② DockLayout(静的永続化ヘルパー)**: `Save(manager, path)` / `SaveToString(manager)` / `Load(manager, path, Func<string, object?> resolveContent)`。復元時の再結合は ContentId リゾルバに委譲
+  - **食い違い規約**: リゾルバが null を返した項目は破棄(廃止ツールウィンドウ対策)。レイアウト XML に存在しない新規ツールウィンドウはアプリ既定位置のまま(XML が知らないものには触らない)
+  - 保存先・保存タイミングはアプリの領分(自動保存サービスは作らない。必要なら A の上に約10行で書ける)
+- ViewModel 基底は `Dirkster.AvalonDock.Mvvm` で足りるかを実装時に評価し、足りるなら再エクスポートせず素通しで使う
+
+### 6.13.3 デモと検証
+
+- **フルシェルデモ(本命)**: ギャラリーの「CAE シェルを開く」ボタンで WcuWindow + DockingManager 全面の別ウィンドウを起動。メニューバー・ステータスバー・中央ドキュメント(疑似ビューポート)+ ModelTree / PropertyGrid / LogConsole / ColorMapLegend のツールウィンドウ構成で、ライブラリ全部入りの実演を兼ねる
+- **ギャラリーページ**: フルシェル起動ボタン+機能説明+レイアウト保存/復元の操作ボタン置き場(ページへの DockingManager 埋め込みはしない)
+- **検証**: 自動隠し・フローティング・タブ化は `LayoutAnchorable.Float()` / `ToggleAutoHide()` 等をスクリプトからプログラム的に駆動してスクリーンショット確認。レイアウト保存/復元は Save → 配置変更 → Load のラウンドトリップ一致で検証。ドラッグのドッキングガイド操作のみ目視
+
+### 6.13.4 実装メモ(Phase 13 完了時)
+
+- **バージョン**: v5 系はまだ preview のみのため安定版 **4.74.1** を採用(`Dirkster.AvalonDock` + `Dirkster.AvalonDock.Themes.VS2013`)。API は同一系統なので v5 安定化後はパッケージ更新のみの見込み
+- **テーマは XAML フォーク不要だった**: 現行の VS2013 テーマは「`ResourceKeys`(ComponentResourceKey 約80個)にブラシを与えると、制御テンプレート側が DynamicResource で拾う」再配色設計(`DictionaryTheme` + パレット辞書を実行時に組み立てる方式)。そこで `WcuDockTheme : DictionaryTheme` とし、
+  - パッケージの `Generic.xaml` / `OverlayButtons.xaml`(制御テンプレート)はそのままマージ
+  - `Themes/WcuDockResources.xaml` で全 ResourceKeys に `<SolidColorBrush Color="{DynamicResource Wcu.Color.*}"/>` を供給
+  - テーマ辞書はフローティングウィンドウにも AvalonDock が自動でマージするため、フローティングも含めて実行時にテーマ・アクセント変更へ追従する
+- **コアへの追随変更**: アクセントの「色プリミティブ」`Wcu.Color.Accent.Default/Hover/Pressed/Muted` を Tokens.Dark に追加し、`ThemeManager.SetAccent` がブラシと合わせて色キーも上書きするよう拡張(ブラシキーを参照できない外部テーマ再配色機構への供給路)
+- `DockLayout`(`WpfCustomUI.Docking/DockLayout.cs`): `XmlLayoutSerializer` の薄いラッパー。`LayoutSerializationCallback` で ContentId → リゾルバ委譲、null は `e.Cancel = true` で破棄。`LoadFromString` / `SaveToString` も提供(アプリ設定埋め込み・既定レイアウトのリセット用)
+- デモ: `DockingShellWindow`(WcuWindow + メニュー/ステータスバー + DockingManager 全面。モデル/プロパティ/凡例/ログ + ドキュメント2枚)。「表示」メニューは現在レイアウトから ContentId で LayoutAnchorable を検索して `Show()`(`Layout.Hidden` も検索対象)。「レイアウト」メニューで保存/復元/既定に戻す(既定 = Loaded 時に `SaveToString` で控えた XML)。ギャラリーには起動ボタン+解説の `DockingPage`、`--dockshell` 引数で起動直後にシェルを開く
+- UIA 検証: `.dev/scripts/verify-docking.ps1`(初期表示 → レイアウト保存 → キャプションのマウスドラッグでフローティング化(ガイド表示のスクリーンショット込み)→ レイアウト復元でドックに戻ることを確認)。**注意**: UIA のデスクトップ直下列挙は owned window を取りこぼすことがあるため、シェルウィンドウは Win32 `EnumWindows` で hwnd を得て `AutomationElement.FromHandle` で掴む。ドラッグはタブではなくキャプションから行うと確実
+- スモークテスト(`--smoke`)は全ページに加えて `DockingShellWindow` の生成も検証する
+
 ## 7. テスト方針
 
 - **UI に依存しないロジックのみ** xUnit でテストする:
@@ -362,5 +405,5 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 | **Phase 10 — テーマ網羅+小物**                   | TreeView / ListView(GridView) / PasswordBox / RichTextBox / Hyperlink / Label のスタイル穴埋め + InfoBar / ToggleSwitch / ProgressRing               | ✅ 完了 (2026-08-01) |
 | **Phase 11 — ポスト処理系小物 第2弾**            | PlaybackBar(結果アニメーション再生バー) / ColorScaleEditor(カラーマップ設定エディタ、`ColorScale.Clone()` 追加)                                      | ✅ 完了 (2026-08-01) |
 | **Phase 12 — 小物の最終弾**                      | CheckComboBox / MatrixBox / ModelTree インライン名前変更 / KeyGestureBox / Wizard(StepIndicator)                                                      | ✅ 完了 (2026-08-01) |
+| **Phase 13 — ドッキング**                        | `WpfCustomUI.Docking` 新設(Dirkster.AvalonDock 4.74.1)。WcuDockTheme(ResourceKeys 再配色+Wcu トークン)/ DockLayout 永続化ヘルパー / フルシェルデモ  | ✅ 完了 (2026-08-01) |
 | **(将来)Charts**                                 | 外部ライブラリ(ScottPlot / OxyPlot 等を選定)ベースの別アセンブリ `WpfCustomUI.Charts`。収束モニタ等の CAE 向け複合コントロールを提供                 | 構想                 |
-| **(将来)ドッキング**                             | ツールウィンドウのタブ化・ピン留め・折りたたみ等。実アプリ採用後に要件(フローティング要否・レイアウト保存要否)を確定してから範囲を決める             | 構想                 |

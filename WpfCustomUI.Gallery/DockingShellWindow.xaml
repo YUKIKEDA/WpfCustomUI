@@ -1,0 +1,94 @@
+<ui:WcuWindow x:Class="WpfCustomUI.Gallery.DockingShellWindow"
+              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+              xmlns:ui="https://schemas.wpfcustomui.dev/xaml"
+              xmlns:ad="clr-namespace:AvalonDock;assembly=AvalonDock"
+              xmlns:adl="clr-namespace:AvalonDock.Layout;assembly=AvalonDock"
+              Title="CAE Shell — ドッキングデモ"
+              Height="800" Width="1280">
+    <DockPanel>
+        <!-- メニュー -->
+        <Menu DockPanel.Dock="Top">
+            <MenuItem Header="表示(_V)">
+                <MenuItem Header="モデル" Tag="Shell.ModelTree" Click="OnShowToolWindow" />
+                <MenuItem Header="プロパティ" Tag="Shell.Properties" Click="OnShowToolWindow" />
+                <MenuItem Header="凡例" Tag="Shell.Legend" Click="OnShowToolWindow" />
+                <MenuItem Header="ログ" Tag="Shell.Log" Click="OnShowToolWindow" />
+            </MenuItem>
+            <MenuItem Header="レイアウト(_L)">
+                <MenuItem Header="レイアウトを保存" Click="OnSaveLayout" />
+                <MenuItem Header="レイアウトを復元" Click="OnLoadLayout" />
+                <Separator />
+                <MenuItem Header="既定のレイアウトに戻す" Click="OnResetLayout" />
+            </MenuItem>
+        </Menu>
+
+        <!-- ステータスバー -->
+        <StatusBar DockPanel.Dock="Bottom">
+            <StatusBarItem x:Name="StatusMessage" Content="準備完了" />
+            <Separator />
+            <StatusBarItem Content="タブをドラッグ: ドッキングガイドに重ねて再配置 / 外へドロップでフローティング" />
+        </StatusBar>
+
+        <!-- ドッキング領域 -->
+        <ad:DockingManager x:Name="Dock">
+            <ad:DockingManager.Theme>
+                <ui:WcuDockTheme />
+            </ad:DockingManager.Theme>
+
+            <adl:LayoutRoot>
+                <adl:LayoutPanel Orientation="Horizontal">
+
+                    <!-- 左: モデルツリー -->
+                    <adl:LayoutAnchorablePane DockWidth="260">
+                        <adl:LayoutAnchorable Title="モデル" ContentId="Shell.ModelTree">
+                            <ui:ModelTree x:Name="Tree" />
+                        </adl:LayoutAnchorable>
+                    </adl:LayoutAnchorablePane>
+
+                    <!-- 中央: ドキュメント + 下部ログ -->
+                    <adl:LayoutPanel Orientation="Vertical">
+                        <adl:LayoutDocumentPane>
+                            <adl:LayoutDocument Title="Viewport — 静解析 (Case 1)" ContentId="Shell.Doc.Case1">
+                                <Border x:Name="ViewportCase1" Background="{DynamicResource Wcu.Brush.Surface.Window}">
+                                    <TextBlock Text="3D Viewport (Case 1)"
+                                               Foreground="{DynamicResource Wcu.Brush.Text.Disabled}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                            </adl:LayoutDocument>
+                            <adl:LayoutDocument Title="Viewport — 固有値解析 (Case 2)" ContentId="Shell.Doc.Case2">
+                                <Border x:Name="ViewportCase2" Background="{DynamicResource Wcu.Brush.Surface.Window}">
+                                    <TextBlock Text="3D Viewport (Case 2)"
+                                               Foreground="{DynamicResource Wcu.Brush.Text.Disabled}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                            </adl:LayoutDocument>
+                        </adl:LayoutDocumentPane>
+
+                        <adl:LayoutAnchorablePane DockHeight="200">
+                            <adl:LayoutAnchorable Title="ログ" ContentId="Shell.Log">
+                                <ui:LogConsole x:Name="Console" />
+                            </adl:LayoutAnchorable>
+                        </adl:LayoutAnchorablePane>
+                    </adl:LayoutPanel>
+
+                    <!-- 右: プロパティ + 凡例 -->
+                    <adl:LayoutAnchorablePane DockWidth="300">
+                        <adl:LayoutAnchorable Title="プロパティ" ContentId="Shell.Properties">
+                            <ui:PropertyGrid x:Name="Props" />
+                        </adl:LayoutAnchorable>
+                        <adl:LayoutAnchorable Title="凡例" ContentId="Shell.Legend">
+                            <Border x:Name="LegendHost" Background="{DynamicResource Wcu.Brush.Surface.Window}">
+                                <ui:ColorMapLegend x:Name="Legend"
+                                                   Title="応力 [MPa]"
+                                                   Height="240" Margin="16"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Top" />
+                            </Border>
+                        </adl:LayoutAnchorable>
+                    </adl:LayoutAnchorablePane>
+
+                </adl:LayoutPanel>
+            </adl:LayoutRoot>
+        </ad:DockingManager>
+    </DockPanel>
+</ui:WcuWindow>

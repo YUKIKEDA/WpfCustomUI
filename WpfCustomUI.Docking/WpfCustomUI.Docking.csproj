@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <!--
+    ドッキングは外部ライブラリ(Dirkster.AvalonDock)への依存を持つ唯一のアセンブリ(spec 6.13)。
+    コア(WpfCustomUI.Controls)の依存ゼロ方針を守るため、依存はここに隔離する。
+  -->
+  <PropertyGroup>
+    <PackageId>WpfCustomUI.Docking</PackageId>
+    <Version>0.1.0</Version>
+    <Description>AvalonDock-based docking integration (theme and layout persistence helpers) for WpfCustomUI.</Description>
+    <RepositoryType>git</RepositoryType>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WpfCustomUI.Controls\WpfCustomUI.Controls.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dirkster.AvalonDock" Version="4.74.1" />
+    <PackageReference Include="Dirkster.AvalonDock.Themes.VS2013" Version="4.74.1" />
+  </ItemGroup>
+
+</Project>

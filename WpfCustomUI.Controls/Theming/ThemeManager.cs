@@ -18,6 +18,10 @@ public static class ThemeManager
         "Wcu.Brush.Accent.Pressed",
         "Wcu.Brush.Accent.Muted",
         "Wcu.Brush.Border.Focus",
+        "Wcu.Color.Accent.Default",
+        "Wcu.Color.Accent.Hover",
+        "Wcu.Color.Accent.Pressed",
+        "Wcu.Color.Accent.Muted",
     ];
 
     /// <summary>登録済みの全 WcuTheme のバリアントを切り替える。</summary>
@@ -45,6 +49,13 @@ public static class ThemeManager
             theme["Wcu.Brush.Accent.Pressed"] = CreateFrozenBrush(palette.Pressed);
             theme["Wcu.Brush.Accent.Muted"] = CreateFrozenBrush(palette.Muted);
             theme["Wcu.Brush.Border.Focus"] = CreateFrozenBrush(palette.Default);
+
+            // 色プリミティブも更新する。ブラシキーを参照できない消費者
+            // (WpfCustomUI.Docking のドックテーマ等)がアクセント変更に追従するため。
+            theme["Wcu.Color.Accent.Default"] = palette.Default;
+            theme["Wcu.Color.Accent.Hover"] = palette.Hover;
+            theme["Wcu.Color.Accent.Pressed"] = palette.Pressed;
+            theme["Wcu.Color.Accent.Muted"] = palette.Muted;
         }
     }
 
