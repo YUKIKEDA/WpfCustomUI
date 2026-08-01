@@ -802,6 +802,75 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 - **検証**: xUnit 22 件追加(計 138)+ `.dev/scripts/verify-viewport-glyphs.ps1`(ON/OFF diff・決定性 diff=0・スケール・ストライド・クリップ併用・振動アニメ追従・両テーマスクショ)全パス。既存 verify-viewport-section.ps1 の回帰も確認
 - **バックログ**: 空間均等サンプリング間引き / 矢印の画面固定サイズモード / テンソルグリフ(主応力の 3 軸表示)
 
+## 6.22 ビューポート第7弾 — 大規模メッシュ性能(Phase 22)
+
+(2026-08-01 の設計インタビューで決定)
+
+### 6.22.1 テーマ選定と性能目標
+
+- **大規模メッシュ性能**を採用。実用レベルの CAE では数千万〜数億要素のモデルを扱う必要があり、表示系の大物(コンター/選択/変形/断面/プローブ/グリフ)が出揃った今、スケール対応がライブラリ実用化の要
+- **目標: 表面三角形 5,000万・節点 2,500万**をハードウェア GPU で「ロード数秒台・操作 30fps」。本ライブラリは表面三角形を描画する設計(FEM→表面抽出はアプリ責務、spec 6.16.3)のため、**数億要素のソリッドモデルも表面抽出後はこのレンジに収まる**
+- 数億三角形の**直接描画**は LOD・メッシュ削減・アウトオブコアが必須の別物の仕事のため、将来フェーズへ(本フェーズの計測基盤がその前提になる)
+
+### 6.22.2 アーキテクチャ変更(4 項目一括、全機能の動作維持)
+
+1. **チャンク分割**: 頂点/インデックスバッファを一定サイズごとに分割して複数ドロー。D3D11 の単一リソース上限(保証 128MB、実質 1〜2GB)対策で、5,000万頂点 × 28B ≈ 1.4GB の単一バッファはロード自体が環境依存で失敗する。**GPU ID ピッキングの三角形 ID(SV_PrimitiveID)はドロー毎にリセットされる**ため、チャンク基点オフセットを cbuffer で加算してピック/矩形選択/プローブの整合を維持する
+2. **並列ジオメトリ構築**: 法線計算・インターリーブ・エッジ抽出を Parallel.For 化+中間コピー削減。現状シングルスレッドでは 5,000万三角形のロードに数十秒かかる
+3. **エッジ抽出の閾値制御**(6.22.4)
+4. **統計 API**(6.22.5)
+
+- 機能を削って速くするのではなく、**ピック/選択/変形/断面/グリフの全機能が大規模でも動く**ことを維持する
+
+### 6.22.3 API 方針
+
+- **double API は維持**(非破壊。大座標値の精度対策として再センタリング後に float 化する Phase 16 の設計根拠を踏襲)
+- フルサイズの中間配列(インターリーブ用 float・法線)を**チャンク単位の構築**に変えてピークメモリを削減
+- 構築は**同期のまま**(並列化で数秒台に短縮)。非同期構築(構築中の旧シーン表示+進捗イベント)は状態管理一式が必要なためバックログ
+
+### 6.22.4 エッジ抽出の閾値
+
+- **`WcuViewport.EdgeExtractionLimit` DP**(三角形数、既定 500万)。超過メッシュはエッジ抽出自体をスキップ(ShowEdges/非変形ワイヤフレーム重畳は無効になる)。int.MaxValue で実質無制限
+- エッジは三角形数の約 1.5 倍のライン(5,000万三角形 → 約 1.8GB のインデックス)を生むため、安全網として必須。アプリの明示制御(ViewportMesh.ShowEdges)は従来どおり
+
+### 6.22.5 統計 API
+
+- **`GetStatistics()` → `ViewportStatistics` レコード**(三角形数/節点数/チャンク数/エッジスキップ有無/直近のジオメトリ構築時間/直近の描画時間)
+- スナップショット取得メソッド方式(頻繁に変わる値を DP にするとバインディング更新が描画毎に走るため)。用途: アプリのステータスバー表示・ベンチ計測・性能回帰の検証
+
+### 6.22.6 デモ — 新ページ「3D Benchmark」
+
+- 合成波面メッシュ(パラメトリック生成)を **10万〜5,000万三角形の ComboBox 選択**(既定 100万。5,000万は CPU 約 1.2GB+GPU 約 1.4GB を消費するため明示選択制)
+- コンター表示+**構築時間/描画時間/FPS 表示**(統計 API の参照実装)+回転アニメによる連続描画 FPS 計測+ピック動作確認
+
+### 6.22.7 検証
+
+- **xUnit**: チャンク分割数学(境界・三角形→チャンク割当・ピック ID オフセット逆引き)、並列法線計算の逐次版一致、エッジ閾値スキップ判定、ViewportStatistics
+- **UIA**: 複数チャンクになる規模で構築 → 統計文字列(三角形数・チャンク数 ≥ 2)とピック整合をアサート+両テーマスクショ。フレーム時間の絶対値は環境依存のためアサートしない
+- **Release 手動ベンチ**: 100万/1,000万/2,500万/5,000万の構築時間・FPS を計測して spec に記録
+
+### 6.22.8 実装メモ(2026-08-01 完了)
+
+- **ViewportChunking**(internal 静的クラス): 純粋関数群。`ComputeChunkBoundaries`(頂点上限 400万・三角形上限 800万/チャンク、ユニーク頂点数をエポック式マークで数えながら連続分割)/ `BuildChunkData`(チャンク内のグローバル頂点→ローカル添字の再マップ。`ChunkVertexRemap` はエポック方式でクリア不要、チャンク間で再利用)
+- **GpuMesh のチャンク化**: `GpuMeshChunk`(頂点/変位/三角形インデックス/エッジインデックスの各バッファ+`GlobalVertices` 逆引き+`TriangleBase` ピック基点)のリストを保持。インターリーブ頂点・変位のギャザーはチャンク単位で並列化し、フルサイズ中間配列を排除。グリフインスタンスも 200万件/バッファで分割
+- **ピック ID オフセット**: HLSL cbuffer に `PickParams`(x=チャンク三角形基点)を追加し、ID パスで `SV_PrimitiveID + PickParams.x` を書く。ピック/矩形選択/プローブがチャンク跨ぎでも一貫。選択面ハイライトは元メッシュのインデックス参照をやめ、位置+変位を直接持つ独立頂点バッファに変更
+- **並列構築**: `ToLocalPositions`(再センタリング+float 化)と法線の正規化を `Parallel.For` 化(65,536 頂点以上で発動)。法線の面加算は競合回避のため逐次のまま(実測ボトルネックはギャザー側)
+- **`EdgeExtractionLimit` DP**(既定 500万三角形): 超過メッシュはエッジ抽出をスキップし `ViewportStatistics.EdgeSkippedMeshCount` に現れる
+- **`GetStatistics()`**: `ViewportStatistics` レコード(三角形/節点/メッシュ/チャンク数、エッジスキップ数、直近の構築時間/描画時間)
+- **GPU 完了待ち(重要な発見)**: D3DImage 経路では `Flush()` がコマンド発行のみで GPU 完了を待たないため、大規模メッシュ(フレーム数十 ms)でテーマ切替などの単発再描画時に WPF 合成スレッドが**描画完了前の共有サーフェスをコピー**し、前フレームが表示され続ける競合が発覚。`Render()` 末尾にイベントクエリ(`D3D11_QUERY_EVENT`)での完了待ちを追加して解消。副次的に `LastRenderTime` が実フレーム時間を示すようになった(従来は発行時間のみで無意味だった)。併せて `IsFrontBufferAvailableChanged` 復帰時に `SetBackBuffer` を張り直す処理も追加
+- **ギャラリー「3D Benchmark」**: 合成波面メッシュ(10万〜5,000万を ComboBox 選択、既定 100万、生成も並列化)+コンター+統計表示(GetStatistics 参照実装)+回転アニメ実測 FPS+面ピック動作確認+Top/Fit ボタン
+- **Release ベンチ結果(2026-08-01、ハードウェア GPU、MSAA 4x)**:
+
+| 三角形数 | 節点数  | チャンク | 構築時間 | 描画時間 | 回転アニメ FPS | WorkingSet |
+| -------- | ------- | -------- | -------- | -------- | -------------- | ---------- |
+| 100万    | 50万    | 1        | 157 ms   | 2.4 ms   | 1,049          | 372 MB     |
+| 1,000万  | 500万   | 2        | 410 ms   | 6.8 ms   | 254            | 1.1 GB     |
+| 2,500万  | 1,250万 | 4        | 706 ms   | 10.0 ms  | 96             | 3.2 GB     |
+| 5,000万  | 2,500万 | 7        | 1,281 ms | 30.0 ms  | 31.9           | 5.8 GB     |
+
+- 目標(5,000万三角形でロード数秒台・操作 30fps)を達成。エッジ抽出は既定閾値でスキップ(1,000万以上)
+- **検証**: xUnit 13 件追加(計 151、チャンク境界/再マップ/ピック ID 逆引き/並列一致/閾値/統計)+ `.dev/scripts/verify-viewport-benchmark.ps1`(1M 統計+ピック、10M 統計+チャンク数 ≥ 2+3×3 グリッドピック 9/9 ヒットで両チャンク跨ぎを確認+両テーマスクショ)全パス。glyphs/section の既存 UIA 回帰も確認。`.dev/scripts/bench-viewport-release.ps1` で Release ベンチを自動化
+- **バックログ**: 非同期構築(旧シーン表示+進捗イベント) / LOD・メッシュ削減による数億三角形直接描画 / 空間均等サンプリング
+
 ## 7. テスト方針
 
 - **UI に依存しないロジックのみ** xUnit でテストする:
@@ -813,27 +882,28 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 
 ## 8. 実装フェーズ
 
-| フェーズ                                         | 内容                                                                                                                                                                      | 状態                 |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| **Phase 0 — 基盤**                               | `WpfCustomUI.Controls` へ改名、`XmlnsDefinition`、デザイントークン定義、ダークテーマ辞書、ギャラリー骨格、テストプロジェクト追加                                          | ✅ 完了 (2026-07-31) |
-| **Phase 1 — 標準コントロールスタイル(コア集合)** | Button / TextBox / ComboBox / CheckBox / ScrollBar / TabControl / Menu / ToolTip / Slider / ProgressBar など、CAE コントロールの部品になるものを優先                      | ✅ 完了 (2026-07-31) |
-| **Phase 2 — 部品系 CAE コントロール**            | 単位付き数値入力、グループパネル/Expander(他の部品になるため先行)                                                                                                         | ✅ 完了 (2026-07-31) |
-| **Phase 3 — プロパティグリッド**                 | Phase 2 のエディタを利用                                                                                                                                                  | ✅ 完了 (2026-08-01) |
-| **Phase 4 — モデルツリー**                       | フラット化ツリー。ロジックのテスト重点                                                                                                                                    | ✅ 完了 (2026-08-01) |
-| **Phase 5 — 独立系**                             | ログコンソール / 進捗表示 / カラーマップ凡例(相互独立なので順不同)                                                                                                        | ✅ 完了 (2026-08-01) |
-| **Phase 6 — シェル軽量群**                       | GridSplitter / GroupBox / Separator / ToolBar / StatusBar / SearchBox(+PropertyGrid フィルタ改修)                                                                         | ✅ 完了 (2026-08-01) |
-| **Phase 7 — ウィンドウ系**                       | WcuWindow(クローム) / WcuDialogWindow / WcuMessageBox / ToastHost / BusyOverlay                                                                                           | ✅ 完了 (2026-08-01) |
-| **Phase 8 — DataGrid**                           | 標準 DataGrid のフルスタイル化(最大工数のため独立フェーズ)                                                                                                                | ✅ 完了 (2026-08-01) |
-| **Phase 9 — 入力・ツールバー小物**               | DropDownButton / SplitButton / PathBox / RangeSlider / ColorPicker(ColorEditor) / Vector3Box + PropertyGrid 連携(Path/Color/Vector3 PropertyItem)                         | ✅ 完了 (2026-08-01) |
-| **Phase 10 — テーマ網羅+小物**                   | TreeView / ListView(GridView) / PasswordBox / RichTextBox / Hyperlink / Label のスタイル穴埋め + InfoBar / ToggleSwitch / ProgressRing                                    | ✅ 完了 (2026-08-01) |
-| **Phase 11 — ポスト処理系小物 第2弾**            | PlaybackBar(結果アニメーション再生バー) / ColorScaleEditor(カラーマップ設定エディタ、`ColorScale.Clone()` 追加)                                                           | ✅ 完了 (2026-08-01) |
-| **Phase 12 — 小物の最終弾**                      | CheckComboBox / MatrixBox / ModelTree インライン名前変更 / KeyGestureBox / Wizard(StepIndicator)                                                                          | ✅ 完了 (2026-08-01) |
-| **Phase 13 — ドッキング**                        | `WpfCustomUI.Docking` 新設(Dirkster.AvalonDock 4.74.1)。WcuDockTheme(ResourceKeys 再配色+Wcu トークン)/ DockLayout 永続化ヘルパー / フルシェルデモ                        | ✅ 完了 (2026-08-01) |
-| **Phase 14 — Charts**                            | `WpfCustomUI.Charts` 新設(ScottPlot 5)。WcuPlot/WcuChartTheme(トークン配色+ThemeChanged 追従)/ ConvergenceMonitor / HistoryChart / FrequencyResponsePlot / HistogramChart | ✅ 完了 (2026-08-01) |
-| **Phase 15 — ライトテーマ**                      | Tokens.Light.xaml(VS 2022 Light 準拠)+ セマンティック Color キー正式化(Docking/Charts 移行)+ ナビ常設テーマトグル + GetSystemTheme() + 全ページ×両テーマ検証             | ✅ 完了 (2026-08-01) |
-| **Phase 16 — 3D ビューポート(最小核)**           | `WpfCustomUI.Viewport3D` 新設(Silk.NET D3D11 + D3DImage 自作エンジン)。WcuViewport(カメラ/Fit/両投影) / ViewportMesh(三角形+節点スカラー) / ColorScale コンター / エッジ重畳 / 軸トライアッド / WARP フォールバック | ✅ 完了 (2026-08-01) |
-| **Phase 17 — ビューポート第2弾(選択+操作系)**    | GPU ID ピッキング(パーツ/面/節点) / ViewportSelection モデル+ハイライト描画内蔵 / クリック・Ctrl トグル・矩形選択 / SetStandardView + クリック式 ViewCube(補間アニメ付き)                                        | ✅ 完了 (2026-08-01) |
-| **Phase 18 — ビューポート第3弾(変形+アニメ)**    | ViewportMesh.Displacements + GPU 頂点シェーダ変形(スケールは cbuffer、フレーム切替は部分更新) / DeformationScale / モード振動アニメ内蔵 / 非変形ワイヤフレーム重畳 / 自動スケール推奨値 / PlaybackBar 連携デモ      | ✅ 完了 (2026-08-01) |
-| **Phase 19 — ビューポート第4弾(断面カット)**     | SectionPlane DP(点+法線、SV_ClipDistance で全パス一貫クリップ) / ViewportMesh.IsClippable / 平面インジケータ内蔵(操作 UI はアプリ側) / 新ページ「3D Section」(厚肉円筒 Lamé 解+アプリ断面スライス参照実装)          | ✅ 完了 (2026-08-01) |
-| **Phase 20 — ビューポート第5弾(プローブ+注釈)**  | PickMode.Probe(GPU ID ピック+レイ交差+重心補間) / ProbePicked イベント+ProbeLabelFormatter / Annotations(節点バインド主体、変形追従、WPF オーバーレイチップ+リーダーライン) / 新ページ「3D Probe」(Kirsch 円孔板)      | ✅ 完了 (2026-08-01) |
-| **Phase 21 — ビューポート第6弾(ベクトルグリフ)** | ViewportMesh.VectorValues + GPU インスタンシング低ポリ 3D 矢印(変形追従・断面クリップ対応) / ShowGlyphs / GlyphScale+推奨値ヘルパ / GlyphStride 間引き / GlyphColorScale(\|v\|→カラーマップ) / 新ページ「3D Glyphs」(厚肉円筒 Lamé 変位場)  | ✅ 完了 (2026-08-01) |
+| フェーズ                                             | 内容                                                                                                                                                                                                                                              | 状態                 |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| **Phase 0 — 基盤**                                   | `WpfCustomUI.Controls` へ改名、`XmlnsDefinition`、デザイントークン定義、ダークテーマ辞書、ギャラリー骨格、テストプロジェクト追加                                                                                                                  | ✅ 完了 (2026-07-31) |
+| **Phase 1 — 標準コントロールスタイル(コア集合)**     | Button / TextBox / ComboBox / CheckBox / ScrollBar / TabControl / Menu / ToolTip / Slider / ProgressBar など、CAE コントロールの部品になるものを優先                                                                                              | ✅ 完了 (2026-07-31) |
+| **Phase 2 — 部品系 CAE コントロール**                | 単位付き数値入力、グループパネル/Expander(他の部品になるため先行)                                                                                                                                                                                 | ✅ 完了 (2026-07-31) |
+| **Phase 3 — プロパティグリッド**                     | Phase 2 のエディタを利用                                                                                                                                                                                                                          | ✅ 完了 (2026-08-01) |
+| **Phase 4 — モデルツリー**                           | フラット化ツリー。ロジックのテスト重点                                                                                                                                                                                                            | ✅ 完了 (2026-08-01) |
+| **Phase 5 — 独立系**                                 | ログコンソール / 進捗表示 / カラーマップ凡例(相互独立なので順不同)                                                                                                                                                                                | ✅ 完了 (2026-08-01) |
+| **Phase 6 — シェル軽量群**                           | GridSplitter / GroupBox / Separator / ToolBar / StatusBar / SearchBox(+PropertyGrid フィルタ改修)                                                                                                                                                 | ✅ 完了 (2026-08-01) |
+| **Phase 7 — ウィンドウ系**                           | WcuWindow(クローム) / WcuDialogWindow / WcuMessageBox / ToastHost / BusyOverlay                                                                                                                                                                   | ✅ 完了 (2026-08-01) |
+| **Phase 8 — DataGrid**                               | 標準 DataGrid のフルスタイル化(最大工数のため独立フェーズ)                                                                                                                                                                                        | ✅ 完了 (2026-08-01) |
+| **Phase 9 — 入力・ツールバー小物**                   | DropDownButton / SplitButton / PathBox / RangeSlider / ColorPicker(ColorEditor) / Vector3Box + PropertyGrid 連携(Path/Color/Vector3 PropertyItem)                                                                                                 | ✅ 完了 (2026-08-01) |
+| **Phase 10 — テーマ網羅+小物**                       | TreeView / ListView(GridView) / PasswordBox / RichTextBox / Hyperlink / Label のスタイル穴埋め + InfoBar / ToggleSwitch / ProgressRing                                                                                                            | ✅ 完了 (2026-08-01) |
+| **Phase 11 — ポスト処理系小物 第2弾**                | PlaybackBar(結果アニメーション再生バー) / ColorScaleEditor(カラーマップ設定エディタ、`ColorScale.Clone()` 追加)                                                                                                                                   | ✅ 完了 (2026-08-01) |
+| **Phase 12 — 小物の最終弾**                          | CheckComboBox / MatrixBox / ModelTree インライン名前変更 / KeyGestureBox / Wizard(StepIndicator)                                                                                                                                                  | ✅ 完了 (2026-08-01) |
+| **Phase 13 — ドッキング**                            | `WpfCustomUI.Docking` 新設(Dirkster.AvalonDock 4.74.1)。WcuDockTheme(ResourceKeys 再配色+Wcu トークン)/ DockLayout 永続化ヘルパー / フルシェルデモ                                                                                                | ✅ 完了 (2026-08-01) |
+| **Phase 14 — Charts**                                | `WpfCustomUI.Charts` 新設(ScottPlot 5)。WcuPlot/WcuChartTheme(トークン配色+ThemeChanged 追従)/ ConvergenceMonitor / HistoryChart / FrequencyResponsePlot / HistogramChart                                                                         | ✅ 完了 (2026-08-01) |
+| **Phase 15 — ライトテーマ**                          | Tokens.Light.xaml(VS 2022 Light 準拠)+ セマンティック Color キー正式化(Docking/Charts 移行)+ ナビ常設テーマトグル + GetSystemTheme() + 全ページ×両テーマ検証                                                                                      | ✅ 完了 (2026-08-01) |
+| **Phase 16 — 3D ビューポート(最小核)**               | `WpfCustomUI.Viewport3D` 新設(Silk.NET D3D11 + D3DImage 自作エンジン)。WcuViewport(カメラ/Fit/両投影) / ViewportMesh(三角形+節点スカラー) / ColorScale コンター / エッジ重畳 / 軸トライアッド / WARP フォールバック                               | ✅ 完了 (2026-08-01) |
+| **Phase 17 — ビューポート第2弾(選択+操作系)**        | GPU ID ピッキング(パーツ/面/節点) / ViewportSelection モデル+ハイライト描画内蔵 / クリック・Ctrl トグル・矩形選択 / SetStandardView + クリック式 ViewCube(補間アニメ付き)                                                                         | ✅ 完了 (2026-08-01) |
+| **Phase 18 — ビューポート第3弾(変形+アニメ)**        | ViewportMesh.Displacements + GPU 頂点シェーダ変形(スケールは cbuffer、フレーム切替は部分更新) / DeformationScale / モード振動アニメ内蔵 / 非変形ワイヤフレーム重畳 / 自動スケール推奨値 / PlaybackBar 連携デモ                                    | ✅ 完了 (2026-08-01) |
+| **Phase 19 — ビューポート第4弾(断面カット)**         | SectionPlane DP(点+法線、SV_ClipDistance で全パス一貫クリップ) / ViewportMesh.IsClippable / 平面インジケータ内蔵(操作 UI はアプリ側) / 新ページ「3D Section」(厚肉円筒 Lamé 解+アプリ断面スライス参照実装)                                        | ✅ 完了 (2026-08-01) |
+| **Phase 20 — ビューポート第5弾(プローブ+注釈)**      | PickMode.Probe(GPU ID ピック+レイ交差+重心補間) / ProbePicked イベント+ProbeLabelFormatter / Annotations(節点バインド主体、変形追従、WPF オーバーレイチップ+リーダーライン) / 新ページ「3D Probe」(Kirsch 円孔板)                                 | ✅ 完了 (2026-08-01) |
+| **Phase 21 — ビューポート第6弾(ベクトルグリフ)**     | ViewportMesh.VectorValues + GPU インスタンシング低ポリ 3D 矢印(変形追従・断面クリップ対応) / ShowGlyphs / GlyphScale+推奨値ヘルパ / GlyphStride 間引き / GlyphColorScale(\|v\|→カラーマップ) / 新ページ「3D Glyphs」(厚肉円筒 Lamé 変位場)        | ✅ 完了 (2026-08-01) |
+| **Phase 22 — ビューポート第7弾(大規模メッシュ性能)** | 表面三角形 5,000万目標。頂点/インデックスのチャンク分割(ピック ID オフセット対応) / 並列ジオメトリ構築+中間コピー削減 / EdgeExtractionLimit DP(既定 500万) / GetStatistics() 統計 API / 新ページ「3D Benchmark」(合成波面 10万〜5,000万+FPS 計測) | ✅ 完了 (2026-08-01) |

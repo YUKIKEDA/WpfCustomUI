@@ -25,7 +25,7 @@ internal readonly record struct ContourSettings(
     Vector4 BelowColor,
     Vector4 AboveColor);
 
-/// <summary>HLSL の cbuffer FrameConstants と 1:1 対応(208 バイト、16 バイト境界)。</summary>
+/// <summary>HLSL の cbuffer FrameConstants と 1:1 対応(224 バイト、16 バイト境界)。</summary>
 [StructLayout(LayoutKind.Sequential)]
 internal struct FrameConstants
 {
@@ -38,6 +38,17 @@ internal struct FrameConstants
     public Vector4 AboveColor;
     public Vector4 ViewportInfo; // xy=ピクセルサイズ, z=ポイント直径(px)
     public Vector4 DeformParams; // x=変形スケール(振動アニメ係数込み), y=グリフスケール
+
+    /// <summary>
+    /// ピックパスの三角形 ID オフセット(spec 6.22.2)。SV_PrimitiveID はドロー毎に
+    /// リセットされるため、チャンクのグローバル三角形基点を uint で加算する
+    /// (float だと 24bit 仮数で 1,677万超の三角形 ID が表現できない)。
+    /// </summary>
+    public uint PickTriangleBase;
+    public uint PickPad0;
+    public uint PickPad1;
+    public uint PickPad2;
+
     public Vector4 ClipPlane;    // xyz=正規化法線, w=定数項。無効時 (0,0,0,1)
 }
 
@@ -92,6 +103,7 @@ internal sealed unsafe class ViewportRenderer : IDisposable
     private ComPtr<ID3D11InputLayout> _glyphLayout;
     private ComPtr<ID3D11Buffer> _constantBuffer;
     private ComPtr<ID3D11Buffer> _sectionIndicatorBuffer;
+    private ComPtr<ID3D11Query> _frameCompleteQuery;
     private ComPtr<ID3D11Buffer> _glyphVertexBuffer;
     private ComPtr<ID3D11Buffer> _glyphIndexBuffer;
     private uint _glyphIndexCount;
@@ -331,7 +343,7 @@ internal sealed unsafe class ViewportRenderer : IDisposable
             ClipPlane = ViewportSection.DisabledClip,
         };
 
-        // パス 1: 不透明メッシュ → 半透明メッシュの順に三角形を描画
+        // パス 1: 不透明メッシュ → 半透明メッシュの順に三角形を描画(チャンク毎、spec 6.22.2)
         foreach (var transparentPass in (ReadOnlySpan<bool>)[false, true])
         {
             foreach (var item in items)
@@ -349,13 +361,16 @@ internal sealed unsafe class ViewportRenderer : IDisposable
                 constants.ClipPlane = mesh.IsClippable ? clipPlane : ViewportSection.DisabledClip;
                 UploadConstants(in constants);
 
-                BindVertexBuffer(ctx, mesh);
                 ctx->IASetInputLayout(_meshLayout.Handle);
                 ctx->VSSetShader(_meshVs.Handle, null, 0);
                 ctx->PSSetShader(_meshPs.Handle, null, 0);
-                ctx->IASetIndexBuffer(mesh.TriangleIndexBufferHandle, DxgiFormat.FormatR32Uint, 0);
                 ctx->IASetPrimitiveTopology(D3DPrimitiveTopology.D3D11PrimitiveTopologyTrianglelist);
-                ctx->DrawIndexed(mesh.TriangleIndexCount, 0, 0);
+                foreach (var chunk in mesh.Chunks)
+                {
+                    BindVertexBuffer(ctx, chunk);
+                    ctx->IASetIndexBuffer(chunk.TriangleIndexBufferHandle, DxgiFormat.FormatR32Uint, 0);
+                    ctx->DrawIndexed(chunk.TriangleIndexCount, 0, 0);
+                }
             }
         }
 
@@ -364,7 +379,7 @@ internal sealed unsafe class ViewportRenderer : IDisposable
         foreach (var item in items)
         {
             var mesh = item.Mesh;
-            if (!mesh.ShowEdges || mesh.EdgeIndexCount == 0)
+            if (!mesh.ShowEdges || mesh.EdgesSkipped)
             {
                 continue;
             }
@@ -374,13 +389,21 @@ internal sealed unsafe class ViewportRenderer : IDisposable
             constants.ClipPlane = mesh.IsClippable ? clipPlane : ViewportSection.DisabledClip;
             UploadConstants(in constants);
 
-            BindVertexBuffer(ctx, mesh);
             ctx->IASetInputLayout(_lineLayout.Handle);
             ctx->VSSetShader(_lineVs.Handle, null, 0);
             ctx->PSSetShader(_linePs.Handle, null, 0);
-            ctx->IASetIndexBuffer(mesh.EdgeIndexBufferHandle, DxgiFormat.FormatR32Uint, 0);
             ctx->IASetPrimitiveTopology(D3DPrimitiveTopology.D3D11PrimitiveTopologyLinelist);
-            ctx->DrawIndexed(mesh.EdgeIndexCount, 0, 0);
+            foreach (var chunk in mesh.Chunks)
+            {
+                if (chunk.EdgeIndexCount == 0)
+                {
+                    continue;
+                }
+
+                BindVertexBuffer(ctx, chunk);
+                ctx->IASetIndexBuffer(chunk.EdgeIndexBufferHandle, DxgiFormat.FormatR32Uint, 0);
+                ctx->DrawIndexed(chunk.EdgeIndexCount, 0, 0);
+            }
         }
 
         // パス 2.2: ベクトルグリフ(spec 6.21.3)。単位矢印プロトタイプを
@@ -394,7 +417,7 @@ internal sealed unsafe class ViewportRenderer : IDisposable
             foreach (var item in items)
             {
                 var mesh = item.Mesh;
-                if (mesh.GlyphInstanceCount == 0 || mesh.GlyphInstanceBufferHandle is null)
+                if (mesh.GlyphInstanceCount == 0 || mesh.GlyphBuffers.Count == 0)
                 {
                     continue;
                 }
@@ -403,14 +426,19 @@ internal sealed unsafe class ViewportRenderer : IDisposable
                 constants.ClipPlane = mesh.IsClippable ? clipPlane : ViewportSection.DisabledClip;
                 UploadConstants(in constants);
 
-                glyphBuffers[1] = mesh.GlyphInstanceBufferHandle;
-                ctx->IASetVertexBuffers(0, 2, glyphBuffers, glyphStrides, glyphOffsets);
                 ctx->IASetInputLayout(_glyphLayout.Handle);
                 ctx->VSSetShader(_glyphVs.Handle, null, 0);
                 ctx->PSSetShader(_glyphPs.Handle, null, 0);
                 ctx->IASetIndexBuffer(_glyphIndexBuffer.Handle, DxgiFormat.FormatR32Uint, 0);
                 ctx->IASetPrimitiveTopology(D3DPrimitiveTopology.D3D11PrimitiveTopologyTrianglelist);
-                ctx->DrawIndexedInstanced(_glyphIndexCount, mesh.GlyphInstanceCount, 0, 0, 0);
+
+                // 大規模ベクトル場ではインスタンスバッファが複数本に分かれる(spec 6.22)
+                foreach (var (buffer, instanceCount, _) in mesh.GlyphBuffers)
+                {
+                    glyphBuffers[1] = buffer.Handle;
+                    ctx->IASetVertexBuffers(0, 2, glyphBuffers, glyphStrides, glyphOffsets);
+                    ctx->DrawIndexedInstanced(_glyphIndexCount, instanceCount, 0, 0, 0);
+                }
             }
         }
 
@@ -425,7 +453,7 @@ internal sealed unsafe class ViewportRenderer : IDisposable
             foreach (var item in items)
             {
                 var mesh = item.Mesh;
-                if (mesh.EdgeIndexCount == 0)
+                if (mesh.EdgesSkipped)
                 {
                     continue;
                 }
@@ -437,13 +465,21 @@ internal sealed unsafe class ViewportRenderer : IDisposable
                 constants.ClipPlane = mesh.IsClippable ? clipPlane : ViewportSection.DisabledClip;
                 UploadConstants(in constants);
 
-                BindVertexBuffer(ctx, mesh);
                 ctx->IASetInputLayout(_lineLayout.Handle);
                 ctx->VSSetShader(_lineVs.Handle, null, 0);
                 ctx->PSSetShader(_linePs.Handle, null, 0);
-                ctx->IASetIndexBuffer(mesh.EdgeIndexBufferHandle, DxgiFormat.FormatR32Uint, 0);
                 ctx->IASetPrimitiveTopology(D3DPrimitiveTopology.D3D11PrimitiveTopologyLinelist);
-                ctx->DrawIndexed(mesh.EdgeIndexCount, 0, 0);
+                foreach (var chunk in mesh.Chunks)
+                {
+                    if (chunk.EdgeIndexCount == 0)
+                    {
+                        continue;
+                    }
+
+                    BindVertexBuffer(ctx, chunk);
+                    ctx->IASetIndexBuffer(chunk.EdgeIndexBufferHandle, DxgiFormat.FormatR32Uint, 0);
+                    ctx->DrawIndexed(chunk.EdgeIndexCount, 0, 0);
+                }
             }
 
             constants.DeformParams.X = deformationScale;
@@ -452,24 +488,18 @@ internal sealed unsafe class ViewportRenderer : IDisposable
         }
 
         // パス 3: 選択面ハイライト(半透明オーバーレイ、深度書き込みなし+微小手前シフト)
-        // パーツ選択はメッシュ全体の三角形インデックスをそのまま使う(追加バッファ不要)
+        // パーツ選択は全チャンクの三角形をそのまま描く(追加バッファ不要)。
+        // 面選択は GpuSelectionMesh が独立の頂点バッファ(pos+disp 24B)を持つため
+        // メッシュのチャンク分割とは無関係に 1 ドローで描ける(spec 6.22.2)
         ctx->OMSetBlendState(_alphaBlendState.Handle, null, 0xFFFFFFFF);
         ctx->OMSetDepthStencilState(_highlightDepthState.Handle, 0);
+        var faceBuffers = stackalloc ID3D11Buffer*[2];
+        var faceStrides = stackalloc uint[2] { GpuSelectionMesh.FaceVertexStride, GpuSelectionMesh.FaceVertexStride };
+        var faceOffsets = stackalloc uint[2] { 0, 12 };
         foreach (var item in items)
         {
-            ID3D11Buffer* indexBuffer;
-            uint indexCount;
-            if (item.IsPartSelected)
-            {
-                indexBuffer = item.Mesh.TriangleIndexBufferHandle;
-                indexCount = item.Mesh.TriangleIndexCount;
-            }
-            else if (item.Selection is { FaceIndexCount: > 0 } selection)
-            {
-                indexBuffer = selection.FaceIndexBufferHandle;
-                indexCount = selection.FaceIndexCount;
-            }
-            else
+            var isFaceSelection = item.Selection is { FaceVertexCount: > 0 };
+            if (!item.IsPartSelected && !isFaceSelection)
             {
                 continue;
             }
@@ -479,13 +509,30 @@ internal sealed unsafe class ViewportRenderer : IDisposable
             constants.ClipPlane = item.Mesh.IsClippable ? clipPlane : ViewportSection.DisabledClip;
             UploadConstants(in constants);
 
-            BindVertexBuffer(ctx, item.Mesh);
             ctx->IASetInputLayout(_lineLayout.Handle);
             ctx->VSSetShader(_lineVs.Handle, null, 0);
             ctx->PSSetShader(_linePs.Handle, null, 0);
-            ctx->IASetIndexBuffer(indexBuffer, DxgiFormat.FormatR32Uint, 0);
             ctx->IASetPrimitiveTopology(D3DPrimitiveTopology.D3D11PrimitiveTopologyTrianglelist);
-            ctx->DrawIndexed(indexCount, 0, 0);
+
+            if (item.IsPartSelected)
+            {
+                foreach (var chunk in item.Mesh.Chunks)
+                {
+                    BindVertexBuffer(ctx, chunk);
+                    ctx->IASetIndexBuffer(chunk.TriangleIndexBufferHandle, DxgiFormat.FormatR32Uint, 0);
+                    ctx->DrawIndexed(chunk.TriangleIndexCount, 0, 0);
+                }
+            }
+            else
+            {
+                var selection = item.Selection!;
+                // 同一バッファを slot 0(offset 0)/slot 1(offset 12)へ二重バインドして
+                // ライン系シェーダの 2 スロットレイアウトを満たす(断面インジケータと同じ手法)
+                faceBuffers[0] = selection.FaceVertexBufferHandle;
+                faceBuffers[1] = selection.FaceVertexBufferHandle;
+                ctx->IASetVertexBuffers(0, 2, faceBuffers, faceStrides, faceOffsets);
+                ctx->Draw(selection.FaceVertexCount, 0);
+            }
         }
 
         // パス 4: 選択節点ポイント(丸ポイント、深度テストあり・書き込みなし)
@@ -537,6 +584,39 @@ internal sealed unsafe class ViewportRenderer : IDisposable
         }
 
         ctx->Flush();
+        WaitForGpuCompletion();
+    }
+
+    /// <summary>
+    /// 発行済み GPU コマンドの完了をイベントクエリで待つ。
+    /// D3DImage 経路では WPF の合成スレッドが共有サーフェスを任意のタイミングでコピーするため、
+    /// Flush(発行のみ)だけだと大規模シーンで GPU 未完了のうちにコピーされ、
+    /// 直前のフレームが表示され続けることがある(オンデマンド描画では次のフレームが来ないと
+    /// 直らない)。完了待ちにより AddDirtyRect 時点でピクセルが確定していることを保証する。
+    /// </summary>
+    private void WaitForGpuCompletion()
+    {
+        if (_frameCompleteQuery.Handle is null)
+        {
+            return;
+        }
+
+        var ctx = _context.Handle;
+        ctx->End((ID3D11Asynchronous*)_frameCompleteQuery.Handle);
+
+        // GetData は完了で S_OK(0)、未完了で S_FALSE(1) を返す。異常時の無限ループは
+        // タイムアウトで防ぐ(その場合は従来どおり Flush のみ相当の動作になる)
+        var deadline = Environment.TickCount64 + 1000;
+        while (Environment.TickCount64 < deadline)
+        {
+            var hr = ctx->GetData((ID3D11Asynchronous*)_frameCompleteQuery.Handle, null, 0, 0);
+            if (hr != 1)
+            {
+                return; // S_OK(完了)または失敗(デバイスロスト等: 上位の描画例外処理に任せる)
+            }
+
+            Thread.SpinWait(64);
+        }
     }
 
     // ================= GPU ID ピッキング(spec 6.17.1) =================
@@ -688,21 +768,29 @@ internal sealed unsafe class ViewportRenderer : IDisposable
             ClipPlane = ViewportSection.DisabledClip,
         };
 
+        ctx->IASetInputLayout(_pickLayout.Handle);
+        ctx->VSSetShader(_pickVs.Handle, null, 0);
+        ctx->PSSetShader(_pickPs.Handle, null, 0);
+        ctx->IASetPrimitiveTopology(D3DPrimitiveTopology.D3D11PrimitiveTopologyTrianglelist);
+
         for (var i = 0; i < meshes.Count; i++)
         {
             var mesh = meshes[i];
             constants.ObjectColor = new Vector4(i + 1, 0.0f, 0.0f, 0.0f);
             // 表示と同じクリップを適用 → 断面で隠れた要素はピックにも掛からない(spec 6.19.2)
             constants.ClipPlane = mesh.IsClippable ? clipPlane : ViewportSection.DisabledClip;
-            UploadConstants(in constants);
 
-            BindVertexBuffer(ctx, mesh);
-            ctx->IASetInputLayout(_pickLayout.Handle);
-            ctx->VSSetShader(_pickVs.Handle, null, 0);
-            ctx->PSSetShader(_pickPs.Handle, null, 0);
-            ctx->IASetIndexBuffer(mesh.TriangleIndexBufferHandle, DxgiFormat.FormatR32Uint, 0);
-            ctx->IASetPrimitiveTopology(D3DPrimitiveTopology.D3D11PrimitiveTopologyTrianglelist);
-            ctx->DrawIndexed(mesh.TriangleIndexCount, 0, 0);
+            foreach (var chunk in mesh.Chunks)
+            {
+                // SV_PrimitiveID はドロー毎に 0 リセットされるため、チャンクの
+                // グローバル三角形基点を cbuffer で加算する(spec 6.22.2)
+                constants.PickTriangleBase = chunk.TriangleBase;
+                UploadConstants(in constants);
+
+                BindVertexBuffer(ctx, chunk);
+                ctx->IASetIndexBuffer(chunk.TriangleIndexBufferHandle, DxgiFormat.FormatR32Uint, 0);
+                ctx->DrawIndexed(chunk.TriangleIndexCount, 0, 0);
+            }
         }
     }
 
@@ -773,8 +861,10 @@ internal sealed unsafe class ViewportRenderer : IDisposable
         }
     }
 
-    public GpuMesh? CreateMesh(ViewportMesh mesh, double originX, double originY, double originZ) =>
-        GpuMesh.Create(_device, mesh, originX, originY, originZ);
+    public GpuMesh? CreateMesh(
+        ViewportMesh mesh, double originX, double originY, double originZ,
+        int edgeExtractionLimit = int.MaxValue) =>
+        GpuMesh.Create(_device, mesh, originX, originY, originZ, edgeExtractionLimit);
 
     /// <summary>変位バッファのみ差し替える(過渡再生のフレーム更新用、spec 6.18.3)。</summary>
     public void UpdateMeshDisplacements(GpuMesh mesh, double[]? displacements) =>
@@ -1209,6 +1299,10 @@ internal sealed unsafe class ViewportRenderer : IDisposable
             AddressW = TextureAddressMode.Clamp,
         };
         SilkMarshal.ThrowHResult(device->CreateSamplerState(&samplerDesc, _colorMapSampler.GetAddressOf()));
+
+        // フレーム完了待ちイベントクエリ(WaitForGpuCompletion 用)
+        var queryDesc = new QueryDesc { Query = Query.Event };
+        SilkMarshal.ThrowHResult(device->CreateQuery(&queryDesc, _frameCompleteQuery.GetAddressOf()));
     }
 
     private ComPtr<ID3D10Blob> CompileShader(string source, string entryPoint, string profile)
@@ -1271,9 +1365,9 @@ internal sealed unsafe class ViewportRenderer : IDisposable
         ctx->Unmap((ID3D11Resource*)_constantBuffer.Handle, 0);
     }
 
-    private static void BindVertexBuffer(ID3D11DeviceContext* ctx, GpuMesh mesh)
+    private static void BindVertexBuffer(ID3D11DeviceContext* ctx, GpuMeshChunk chunk)
     {
-        var buffers = stackalloc ID3D11Buffer*[2] { mesh.VertexBufferHandle, mesh.DisplacementBufferHandle };
+        var buffers = stackalloc ID3D11Buffer*[2] { chunk.VertexBufferHandle, chunk.DisplacementBufferHandle };
         var strides = stackalloc uint[2] { GpuMesh.VertexStride, GpuMesh.DisplacementStride };
         var offsets = stackalloc uint[2] { 0, 0 };
         ctx->IASetVertexBuffers(0, 2, buffers, strides, offsets);
@@ -1400,6 +1494,7 @@ internal sealed unsafe class ViewportRenderer : IDisposable
         _highlightDepthState.Dispose();
         _depthState.Dispose();
         _rasterizerState.Dispose();
+        _frameCompleteQuery.Dispose();
         _glyphIndexBuffer.Dispose();
         _glyphVertexBuffer.Dispose();
         _sectionIndicatorBuffer.Dispose();

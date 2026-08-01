@@ -40,20 +40,39 @@ public static class ViewportGeometry
             : new Bounds3D(minX, minY, minZ, maxX, maxY, maxZ);
     }
 
+    /// <summary>並列化の閾値(これ未満の要素数はスレッド起動コストの方が高い)。</summary>
+    private const int ParallelThreshold = 65536;
+
     /// <summary>
     /// double 座標を指定原点(通常はシーン中心)で再センタリングして float 化する。
     /// 大座標値(例: 測地系 10^6 オーダー)を GPU の float に直接渡すと
     /// カメラ操作時に頂点がジッタするため、必ずこの経路を通す(spec 6.16.3)。
+    /// 要素独立の変換のため並列化しても結果は逐次版と完全一致する(spec 6.22.2)。
     /// </summary>
     public static float[] ToLocalPositions(double[] positions, double originX, double originY, double originZ)
     {
         ArgumentNullException.ThrowIfNull(positions);
         var result = new float[positions.Length];
-        for (var i = 0; i + 2 < positions.Length; i += 3)
+        var vertexCount = positions.Length / 3;
+
+        if (vertexCount >= ParallelThreshold)
         {
-            result[i] = (float)(positions[i] - originX);
-            result[i + 1] = (float)(positions[i + 1] - originY);
-            result[i + 2] = (float)(positions[i + 2] - originZ);
+            Parallel.For(0, vertexCount, v =>
+            {
+                var i = v * 3;
+                result[i] = (float)(positions[i] - originX);
+                result[i + 1] = (float)(positions[i + 1] - originY);
+                result[i + 2] = (float)(positions[i + 2] - originZ);
+            });
+        }
+        else
+        {
+            for (var i = 0; i + 2 < positions.Length; i += 3)
+            {
+                result[i] = (float)(positions[i] - originX);
+                result[i + 1] = (float)(positions[i + 1] - originY);
+                result[i + 2] = (float)(positions[i + 2] - originZ);
+            }
         }
 
         return result;
@@ -63,6 +82,11 @@ public static class ViewportGeometry
     /// 節点法線を計算する(面積重み付き平均)。
     /// 三角形の外積(=面積の 2 倍のベクトル)をそのまま累積することで、
     /// 大きい三角形ほど法線への寄与が大きくなる。
+    /// <para>
+    /// 累積は共有節点への書き込み競合を避けるため逐次のまま(順序依存の float 加算を
+    /// 並列化すると結果が非決定になる)。正規化は要素独立なので並列化する(spec 6.22.2)。
+    /// チャンク分割とは独立にメッシュ全体で計算するため、チャンク境界の陰影に継ぎ目が出ない。
+    /// </para>
     /// </summary>
     public static float[] ComputeVertexNormals(float[] localPositions, int[] triangleIndices)
     {
@@ -98,7 +122,22 @@ public static class ViewportGeometry
             normals[i2 + 2] += nz;
         }
 
-        for (var i = 0; i + 2 < normals.Length; i += 3)
+        var vertexCount = normals.Length / 3;
+        if (vertexCount >= ParallelThreshold)
+        {
+            Parallel.For(0, vertexCount, v => NormalizeAt(normals, v * 3));
+        }
+        else
+        {
+            for (var i = 0; i + 2 < normals.Length; i += 3)
+            {
+                NormalizeAt(normals, i);
+            }
+        }
+
+        return normals;
+
+        static void NormalizeAt(float[] normals, int i)
         {
             var len = MathF.Sqrt(
                 normals[i] * normals[i] +
@@ -111,8 +150,6 @@ public static class ViewportGeometry
                 normals[i + 2] /= len;
             }
         }
-
-        return normals;
     }
 
     /// <summary>

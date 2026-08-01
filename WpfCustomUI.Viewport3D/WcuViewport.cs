@@ -149,6 +149,12 @@ public class WcuViewport : Control
             nameof(GlyphColorScale), typeof(ColorScale), typeof(WcuViewport),
             new PropertyMetadata(null, OnGlyphColorScaleChanged));
 
+    public static readonly DependencyProperty EdgeExtractionLimitProperty =
+        DependencyProperty.Register(
+            nameof(EdgeExtractionLimit), typeof(int), typeof(WcuViewport),
+            new PropertyMetadata(5_000_000, OnGeometryOptionChanged),
+            v => (int)v >= 0);
+
     private readonly List<(ViewportMesh Source, GpuMesh Gpu)> _gpuMeshes = [];
     private readonly HashSet<ViewportMesh> _displacementDirtyMeshes = [];
     private readonly List<RenderItem> _renderItems = [];
@@ -199,6 +205,10 @@ public class WcuViewport : Control
     private bool _isDeformationTickAttached;
     private DateTime _deformationAnimationStart;
     private float _lastEffectiveDeformationScale = 1.0f;
+
+    // 統計 API 用の計測値(spec 6.22.5)
+    private TimeSpan _lastGeometryBuildTime;
+    private TimeSpan _lastRenderTime;
 
     // 軸トライアッド+ラバーバンドの WPF オーバーレイ要素
     private readonly Line[] _triadLines = new Line[3];
@@ -439,6 +449,47 @@ public class WcuViewport : Control
     {
         get => (ColorScale?)GetValue(GlyphColorScaleProperty);
         set => SetValue(GlyphColorScaleProperty, value);
+    }
+
+    /// <summary>
+    /// エッジ抽出を行う三角形数の上限(spec 6.22.4、既定 500万)。超過するメッシュは
+    /// エッジ抽出自体をスキップし、<see cref="ViewportMesh.ShowEdges"/> や
+    /// <see cref="ShowUndeformedWireframe"/> は無効になる(スキップの有無は
+    /// <see cref="GetStatistics"/> で確認できる)。エッジは三角形数の約 1.5 倍のラインを
+    /// 生むため、大規模メッシュでのメモリ爆発を防ぐ安全網。int.MaxValue で実質無制限。
+    /// </summary>
+    public int EdgeExtractionLimit
+    {
+        get => (int)GetValue(EdgeExtractionLimitProperty);
+        set => SetValue(EdgeExtractionLimitProperty, value);
+    }
+
+    /// <summary>
+    /// 現在のシーンの統計スナップショットを返す(spec 6.22.5)。
+    /// 用途: アプリのステータスバー表示・ベンチ計測・性能回帰の検証。
+    /// 頻繁に変わる値のため DP ではなくメソッド(バインディング更新が描画毎に走るのを避ける)。
+    /// ジオメトリ未構築(初回描画前)の間はゼロ値を返す。
+    /// </summary>
+    public ViewportStatistics GetStatistics()
+    {
+        long triangles = 0;
+        long vertices = 0;
+        var chunks = 0;
+        var edgeSkipped = 0;
+        foreach (var (_, gpu) in _gpuMeshes)
+        {
+            triangles += gpu.TriangleCount;
+            vertices += gpu.VertexCount;
+            chunks += gpu.Chunks.Count;
+            if (gpu.EdgesSkipped)
+            {
+                edgeSkipped++;
+            }
+        }
+
+        return new ViewportStatistics(
+            triangles, vertices, _gpuMeshes.Count, chunks, edgeSkipped,
+            _lastGeometryBuildTime, _lastRenderTime);
     }
 
     /// <summary>
@@ -743,6 +794,9 @@ public class WcuViewport : Control
             var sectionFill = ToVector4(accent, 0.10);
             var sectionLine = ToVector4(accent, 0.70);
 
+            // 描画時間の計測(spec 6.22.5)。CPU 側計測で、コマンド発行+Flush
+            //(ソフトウェア経路では CPU 読み戻しも)を含む
+            var renderTimer = System.Diagnostics.Stopwatch.StartNew();
             if (_renderer.CanUseD3DImage)
             {
                 PresentViaD3DImage(sizeChanged, viewProj, contour, background, edgeColor,
@@ -753,6 +807,8 @@ public class WcuViewport : Control
                 PresentViaWriteableBitmap(sizeChanged, viewProj, contour, background, edgeColor,
                     highlightColor, nodeColor, pointSize, clipPlane, sectionIndicator, sectionFill, sectionLine);
             }
+
+            _lastRenderTime = renderTimer.Elapsed;
 
             UpdateTriadOverlay();
             UpdateAnnotationOverlay(in viewProj, pixelWidth, pixelHeight, dpi.DpiScaleX, clipPlane);
@@ -783,7 +839,14 @@ public class WcuViewport : Control
         if (_d3dImage is null)
         {
             _d3dImage = new D3DImage();
-            _d3dImage.IsFrontBufferAvailableChanged += (_, _) => InvalidateViewport();
+            _d3dImage.IsFrontBufferAvailableChanged += (_, _) =>
+            {
+                // フロントバッファ喪失から復帰したときは SetBackBuffer を張り直さないと
+                // 以後の描画が画面に反映されない(D3DImage の定石)。大規模シーンの
+                // テーマ切替などで WPF がフロントバッファを一時的に手放すことがある
+                _lastBackBuffer = 0;
+                InvalidateViewport();
+            };
             _softwareBitmap = null;
             _lastBackBuffer = 0;
         }
@@ -866,6 +929,8 @@ public class WcuViewport : Control
             return;
         }
 
+        var buildTimer = System.Diagnostics.Stopwatch.StartNew();
+
         foreach (var (_, gpu) in _gpuMeshes)
         {
             gpu.Dispose();
@@ -892,6 +957,7 @@ public class WcuViewport : Control
         if (bounds.IsEmpty)
         {
             _localBounds = Bounds3D.Empty;
+            _lastGeometryBuildTime = buildTimer.Elapsed;
             return;
         }
 
@@ -904,12 +970,14 @@ public class WcuViewport : Control
 
         foreach (var mesh in meshes)
         {
-            var gpu = _renderer.CreateMesh(mesh, ox, oy, oz);
+            var gpu = _renderer.CreateMesh(mesh, ox, oy, oz, EdgeExtractionLimit);
             if (gpu is not null)
             {
                 _gpuMeshes.Add((mesh, gpu));
             }
         }
+
+        _lastGeometryBuildTime = buildTimer.Elapsed;
 
         if (!_hasAutoFitted)
         {
@@ -1201,6 +1269,14 @@ public class WcuViewport : Control
 
     private static void OnVisualOptionChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
         ((WcuViewport)d).InvalidateViewport();
+
+    /// <summary>ジオメトリ全体の再構築が必要な設定(EdgeExtractionLimit 等)の変更。</summary>
+    private static void OnGeometryOptionChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var viewport = (WcuViewport)d;
+        viewport._geometryDirty = true;
+        viewport.InvalidateViewport();
+    }
 
     /// <summary>インスタンスバッファの再構築が必要なグリフ設定(ストライド等)の変更。</summary>
     private static void OnGlyphDataOptionChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

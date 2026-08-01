@@ -22,6 +22,7 @@ internal static class HlslSource
             float4 AboveColor;
             float4 ViewportInfo;   // xy=ビューポートのピクセルサイズ, z=ポイント直径(px)
             float4 DeformParams;   // x=変形スケール(振動アニメ係数込み), y=グリフスケール
+            uint4  PickParams;     // x=ピック三角形 ID のチャンク基点オフセット(spec 6.22.2)
             float4 ClipPlane;      // xyz=正規化法線(ローカル座標), w=定数項。無効時 (0,0,0,1)
         };
         """;
@@ -173,7 +174,9 @@ internal static class HlslSource
 
         uint2 PSMain(PSIn i, uint primId : SV_PrimitiveID) : SV_Target
         {
-            return uint2((uint)(ObjectColor.x + 0.5), primId);
+            // SV_PrimitiveID はドロー毎に 0 リセットされるため、チャンクの
+            // グローバル三角形基点(PickParams.x)を加算する(spec 6.22.2)
+            return uint2((uint)(ObjectColor.x + 0.5), primId + PickParams.x);
         }
         """;
 

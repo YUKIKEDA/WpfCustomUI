@@ -6,7 +6,8 @@ namespace WpfCustomUI.Viewport3D.Rendering;
 /// <summary>
 /// メッシュ 1 パーツ分の選択ハイライト GPU リソース(spec 6.17.3)。
 /// <para>
-/// - 選択面: 選択三角形だけを集めたインデックスバッファ(頂点バッファは <see cref="GpuMesh"/> を再利用)。
+/// - 選択面: 選択三角形の頂点(位置+変位、24B)を集めた独立の頂点バッファ。
+///   メッシュ本体の頂点バッファを参照しないため、チャンク分割(spec 6.22.2)と無関係に描ける。
 /// - 選択節点: 節点位置+コーナーオフセットの 6 頂点クワッド列(ポイントシェーダで円形描画)。
 /// 選択変更のたびに作り直す(ユーザー操作ペースなのでコストは無視できる)。
 /// </para>
@@ -16,18 +17,21 @@ internal sealed unsafe class GpuSelectionMesh : IDisposable
     /// <summary>ポイント頂点レイアウト: position(12B) + corner(8B) + displacement(12B) = 32B。</summary>
     public const uint PointVertexStride = 32;
 
-    private ComPtr<ID3D11Buffer> _faceIndexBuffer;
+    /// <summary>選択面の頂点レイアウト: position(12B) + displacement(12B) = 24B。</summary>
+    public const uint FaceVertexStride = 24;
+
+    private ComPtr<ID3D11Buffer> _faceVertexBuffer;
     private ComPtr<ID3D11Buffer> _nodeVertexBuffer;
 
     private GpuSelectionMesh()
     {
     }
 
-    public uint FaceIndexCount { get; private set; }
+    public uint FaceVertexCount { get; private set; }
 
     public uint NodeVertexCount { get; private set; }
 
-    public ID3D11Buffer* FaceIndexBufferHandle => _faceIndexBuffer.Handle;
+    public ID3D11Buffer* FaceVertexBufferHandle => _faceVertexBuffer.Handle;
 
     public ID3D11Buffer* NodeVertexBufferHandle => _nodeVertexBuffer.Handle;
 
@@ -44,8 +48,12 @@ internal sealed unsafe class GpuSelectionMesh : IDisposable
         var triangleCount = triangles.Length / 3;
         var vertexCount = positions.Length / 3;
 
-        // 選択面インデックス(ジオメトリ差し替えで無効になったインデックスは黙って捨てる)
-        var faceIndices = new List<int>(selectedFaces.Count * 3);
+        // 選択節点クワッド・選択面頂点とも変位を頂点属性として持たせ、変形表示に追従させる。
+        // Displacements 差し替え時は WcuViewport 側が選択バッファごと再構築する
+        var displacements = ViewportDeformation.ToDisplacementArray(source.Displacements, vertexCount);
+
+        // 選択面の頂点ギャザー(ジオメトリ差し替えで無効になったインデックスは黙って捨てる)
+        var faceVertices = new List<float>(selectedFaces.Count * 3 * 6);
         foreach (var face in selectedFaces)
         {
             if (face < 0 || face >= triangleCount)
@@ -53,14 +61,17 @@ internal sealed unsafe class GpuSelectionMesh : IDisposable
                 continue;
             }
 
-            faceIndices.Add(triangles[face * 3]);
-            faceIndices.Add(triangles[face * 3 + 1]);
-            faceIndices.Add(triangles[face * 3 + 2]);
+            for (var corner = 0; corner < 3; corner++)
+            {
+                var v = triangles[face * 3 + corner];
+                faceVertices.Add((float)(positions[v * 3] - originX));
+                faceVertices.Add((float)(positions[v * 3 + 1] - originY));
+                faceVertices.Add((float)(positions[v * 3 + 2] - originZ));
+                faceVertices.Add(displacements[v * 3]);
+                faceVertices.Add(displacements[v * 3 + 1]);
+                faceVertices.Add(displacements[v * 3 + 2]);
+            }
         }
-
-        // 選択節点クワッド(変位を頂点属性として持たせ、変形表示に追従させる。
-        // Displacements 差し替え時は WcuViewport 側が選択バッファごと再構築する)
-        var displacements = ViewportDeformation.ToDisplacementArray(source.Displacements, vertexCount);
         var validNodes = selectedNodes.Where(n => n >= 0 && n < vertexCount).ToList();
         var nodeVertices = new float[validNodes.Count * 6 * 8];
         ReadOnlySpan<(float X, float Y)> corners =
@@ -90,24 +101,24 @@ internal sealed unsafe class GpuSelectionMesh : IDisposable
             }
         }
 
-        if (faceIndices.Count == 0 && nodeVertices.Length == 0)
+        if (faceVertices.Count == 0 && nodeVertices.Length == 0)
         {
             return null;
         }
 
         var result = new GpuSelectionMesh
         {
-            FaceIndexCount = (uint)faceIndices.Count,
+            FaceVertexCount = (uint)(faceVertices.Count / 6),
             NodeVertexCount = (uint)(validNodes.Count * 6),
         };
 
-        if (faceIndices.Count > 0)
+        if (faceVertices.Count > 0)
         {
-            var array = faceIndices.ToArray();
-            fixed (int* pIndices = array)
+            var array = faceVertices.ToArray();
+            fixed (float* pVertices = array)
             {
-                result._faceIndexBuffer = CreateImmutableBuffer(
-                    device, pIndices, (uint)(array.Length * sizeof(int)), BindFlag.IndexBuffer);
+                result._faceVertexBuffer = CreateImmutableBuffer(
+                    device, pVertices, (uint)(array.Length * sizeof(float)), BindFlag.VertexBuffer);
             }
         }
 
@@ -141,9 +152,9 @@ internal sealed unsafe class GpuSelectionMesh : IDisposable
 
     public void Dispose()
     {
-        _faceIndexBuffer.Dispose();
+        _faceVertexBuffer.Dispose();
         _nodeVertexBuffer.Dispose();
-        _faceIndexBuffer = default;
+        _faceVertexBuffer = default;
         _nodeVertexBuffer = default;
     }
 }

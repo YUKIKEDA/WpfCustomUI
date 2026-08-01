@@ -1,0 +1,65 @@
+<UserControl x:Class="WpfCustomUI.Gallery.Pages.ViewportBenchmarkPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ui="https://schemas.wpfcustomui.dev/xaml"
+             mc:Ignorable="d">
+    <UserControl.Resources>
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Secondary}" />
+            <Setter Property="FontSize" Value="{StaticResource Wcu.FontSize.S}" />
+            <Setter Property="Margin" Value="0,2,0,0" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+    </UserControl.Resources>
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel MaxWidth="860" HorizontalAlignment="Left">
+
+            <TextBlock Text="3D Benchmark (大規模メッシュ性能)" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,4" />
+            <TextBlock Style="{StaticResource Hint}"
+                       Text="合成波面メッシュ(パラメトリック生成)で大規模メッシュの構築・描画性能を計測する(spec 6.22)。頂点/インデックスバッファはチャンク分割され、GPU ID ピック・コンター・統計 API(GetStatistics)の参照実装を兼ねる。5,000万三角形は CPU 約 1.2GB+GPU 約 1.4GB を消費するため明示選択制。" />
+
+            <WrapPanel Margin="0,12,0,4" ItemHeight="30">
+                <TextBlock Text="三角形数:" VerticalAlignment="Center" />
+                <ComboBox x:Name="SizeCombo" Width="110" Margin="8,0,0,0" SelectedIndex="1"
+                          AutomationProperties.AutomationId="SizeCombo"
+                          SelectionChanged="OnSizeChanged">
+                    <ComboBoxItem Content="10万" Tag="100000" />
+                    <ComboBoxItem Content="100万" Tag="1000000" />
+                    <ComboBoxItem Content="500万" Tag="5000000" />
+                    <ComboBoxItem Content="1,000万" Tag="10000000" />
+                    <ComboBoxItem Content="2,500万" Tag="25000000" />
+                    <ComboBoxItem Content="5,000万" Tag="50000000" />
+                </ComboBox>
+                <ui:ToggleSwitch x:Name="RotateToggle" Content="回転アニメ(FPS 計測)" Margin="20,0,0,0"
+                                 AutomationProperties.AutomationId="RotateToggle"
+                                 Checked="OnRotateToggleChanged" Unchecked="OnRotateToggleChanged" />
+                <Button Content="Fit" Click="OnFitClick" MinWidth="60" Margin="20,0,0,0" />
+                <Button Content="Top" Click="OnTopViewClick" MinWidth="60" Margin="8,0,0,0"
+                        AutomationProperties.AutomationId="TopViewButton" />
+            </WrapPanel>
+
+            <ui:WcuViewport x:Name="Viewport"
+                            Height="440"
+                            PickMode="Face"
+                            DeformationScale="0" />
+
+            <TextBlock x:Name="StatsText" Style="{StaticResource Hint}" Margin="0,6,0,0"
+                       AutomationProperties.AutomationId="StatsText"
+                       Text="(構築待ち)" />
+            <TextBlock x:Name="FpsText" Style="{StaticResource Hint}"
+                       AutomationProperties.AutomationId="FpsText"
+                       Text="FPS: -" />
+            <TextBlock x:Name="PickText" Style="{StaticResource Hint}"
+                       AutomationProperties.AutomationId="PickText"
+                       Text="ピック: クリックで面を選択(大規模でもチャンク基点オフセットで三角形 ID が一致することの確認)" />
+            <TextBlock x:Name="RendererInfo" Style="{StaticResource Hint}" />
+
+            <TextBlock Style="{StaticResource Hint}" Margin="0,12,0,0"
+                       Text="構築時間は double→float 再センタリング・法線計算(逐次累積+並列正規化)・チャンク分割・エッジ抽出・GPU 転送の合計。EdgeExtractionLimit(既定 500万三角形)を超えるメッシュはエッジ抽出をスキップし、統計のエッジスキップ数に現れる。描画時間はコマンド発行から GPU 完了待ちまでの 1 フレーム実測。連続描画時のフレームレートは回転アニメ中の実測 FPS を参照。" />
+
+            <Border Height="24" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
