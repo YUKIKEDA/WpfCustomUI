@@ -161,4 +161,50 @@ public class ColorScaleTests
 
         Assert.Equal([nameof(ColorScale.Maximum), nameof(ColorScale.LevelCount)], raised);
     }
+
+    [Fact]
+    public void Clone_CopiesAllSettings_AndIsIndependent()
+    {
+        var original = new ColorScale
+        {
+            ColorMap = ColorMap.Viridis,
+            Minimum = 1,
+            Maximum = 1000,
+            IsLogarithmic = true,
+            LevelCount = 8,
+            BelowRangeColor = Colors.Blue,
+            AboveRangeColor = Colors.Red,
+            NaNColor = Colors.Magenta,
+        };
+
+        var clone = original.Clone();
+
+        Assert.Equal(original.ColorMap, clone.ColorMap);
+        Assert.Equal(original.Minimum, clone.Minimum);
+        Assert.Equal(original.Maximum, clone.Maximum);
+        Assert.Equal(original.IsLogarithmic, clone.IsLogarithmic);
+        Assert.Equal(original.LevelCount, clone.LevelCount);
+        Assert.Equal(original.BelowRangeColor, clone.BelowRangeColor);
+        Assert.Equal(original.AboveRangeColor, clone.AboveRangeColor);
+        Assert.Equal(original.NaNColor, clone.NaNColor);
+
+        clone.Maximum = 5;
+        Assert.Equal(1000, original.Maximum);
+    }
+
+    [Fact]
+    public void CopyFrom_TakesAllSettings_AndRaisesOnlyChanged()
+    {
+        var source = new ColorScale { Maximum = 500, LevelCount = 12 };
+        var target = source.Clone();
+        target.Maximum = 250;
+
+        var raised = new List<string?>();
+        target.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        target.CopyFrom(source);
+
+        Assert.Equal(500, target.Maximum);
+        Assert.Equal([nameof(ColorScale.Maximum)], raised);
+    }
 }

@@ -75,6 +75,36 @@ public sealed class ColorScale : INotifyPropertyChanged
         set => SetField(ref _naNColor, value);
     }
 
+    /// <summary>
+    /// 全設定を複製する。ダイアログの適用/キャンセルパターン
+    /// (コピーを編集させて OK 時に <see cref="CopyFrom"/> で書き戻す)を支援する(spec 6.11.2)。
+    /// </summary>
+    public ColorScale Clone() => new()
+    {
+        ColorMap = _colorMap,
+        Minimum = _minimum,
+        Maximum = _maximum,
+        IsLogarithmic = _isLogarithmic,
+        LevelCount = _levelCount,
+        BelowRangeColor = _belowRangeColor,
+        AboveRangeColor = _aboveRangeColor,
+        NaNColor = _naNColor,
+    };
+
+    /// <summary>他のインスタンスの全設定を取り込む(変更された項目だけ通知される)。</summary>
+    public void CopyFrom(ColorScale other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+        ColorMap = other._colorMap;
+        Minimum = other._minimum;
+        Maximum = other._maximum;
+        IsLogarithmic = other._isLogarithmic;
+        LevelCount = other._levelCount;
+        BelowRangeColor = other._belowRangeColor;
+        AboveRangeColor = other._aboveRangeColor;
+        NaNColor = other._naNColor;
+    }
+
     private bool UseLog => _isLogarithmic && _minimum > 0 && _maximum > 0;
 
     /// <summary>値を 0〜1 に正規化する(範囲外はクランプせずそのまま返す)。</summary>

@@ -17,6 +17,7 @@ namespace WpfCustomUI.Gallery
             ("PropertyGrid", () => new PropertyGridPage()),
             ("ModelTree", () => new ModelTreePage()),
             ("ColorMap 凡例", () => new ColorMapPage()),
+            ("Post-processing", () => new PostProcessingPage()),
             ("LogConsole & Progress", () => new LogConsolePage()),
             ("Shell", () => new ShellPage()),
             ("Windows & Dialogs", () => new WindowsPage()),

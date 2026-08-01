@@ -248,6 +248,42 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 - BusyOverlay 内蔵スピナーの切り出しリファクタ。`IsActive` のみ公開、サイズは Width / Height(Viewbox スケール)、色は `Foreground` で指定
 - BusyOverlay は本コントロールを内部利用する形に変更
 
+## 6.11 第5弾スコープ — ポスト処理系 CAE 小物 第2弾
+
+(2026-08-01 の設計インタビューで決定)
+
+- **狙い**: ポスト処理ワークフローで既存部品(ColorMapLegend / RangeSlider)と対になる操作 UI を追加し、CAE 特化領域を完成に近づける
+- **見送り**: 断面(カットプレーン)定義 UI・プローブ表示は 3D ビューポート実装と密結合のため対象外(コンター描画ユーティリティを外した判断と同型)。応力成分セレクタ・視点プリセット類は既存の ComboBox / DropDownButton の組み合わせで足りるため専用化しない。Wizard / ドキュメントタブは引き続き実需待ち
+
+### 6.11.1 PlaybackBar(結果アニメーション再生バー)
+
+- モード形状・時刻歴結果などのアニメーション操作 UI。3D 描画はアプリの領分で、本コントロールは「現在フレームと再生状態を公開する操作 UI」に徹する(LogConsole と同じ分担)
+- **インデックスベースのフレームモデル**: `FrameCount`(総フレーム数)+ `CurrentFrame`(現在位置、TwoWay)が契約。時刻ベース・コレクションベースは採らない(CAE の再生対象は解析ステップ/モード番号/増分など離散列で、実時間と一致しないため)
+- **再生タイマー内蔵**: `DispatcherTimer` により `IsPlaying` / `FramesPerSecond` / `IsLooping` で自走(置くだけで動く)。外部駆動したいアプリは `IsPlaying` を使わず `CurrentFrame` を直接動かせば共存できる
+- **ループは単純リピートのみ**(`IsLooping`、既定 ON)。ピンポン再生はフレーム列に逆順を連結すればアプリ側で実現可能。実需が出たら `LoopMode` 追加で拡張(非破壊)
+- **UI 構成**: ステップ戻し / 再生・一時停止 / ステップ送り / ループトグル + フレームスライダー + `現在/総数` 表示 + `FrameLabel`(string DP。「Step 12/50, t=0.24s」等の整形はアプリの責務)
+  - 停止ボタンは持たない(一時停止+スライダーで代替)。速度選択 UI も持たない(`FramesPerSecond` DP のみ。表記の文化はアプリに依存するため)
+  - 表示カスタマイズフラグは設けず、テンプレート差し替えに委ねる
+- **キーボード**: Space(再生/停止)、← →(ステップ)、Home / End(先頭/末尾)
+
+### 6.11.2 ColorScaleEditor(カラーマップ設定エディタ)
+
+- Phase 5 の `ColorScale` / `ColorMap` モデルの編集 UI。ColorMapLegend が「表示」、本コントロールが「設定」で対になる
+- **直接編集(ライブ反映)方式**: `Scale` DP に受け取った `ColorScale` インスタンスのプロパティを直接書き換える。同じインスタンスを見ている凡例・コンター表示は即座に追従する
+  - 編集イベントは NumericBox の確定規約(Enter/フォーカス喪失)により十分離散的。重い再計算はアプリが `PropertyChanged` をスロットリング
+  - 適用/キャンセルが必要な場面は「コピーを渡して OK 時に書き戻す」`WcuDialogWindow` パターンで実現。支援のため **`ColorScale.Clone()` を追加**する
+- **主要+詳細の2段構成**:
+  - 常時表示: ①カラーマップ選択(グラデーションプレビュー付き ComboBox。既定は組み込みプリセット一覧、`ColorMaps` DP で差し替え可)②Min/Max(NumericBox。`IUnitProvider` / `Format` 透過、Min ≥ Max は検証エラー規約で弾く)③レベル数(「離散レベル」ToggleSwitch + NumericBox 2〜256 既定 10。`LevelCount=null` ⇔ OFF)④対数(ToggleSwitch。Min/Max が非正のときは無効化+理由ツールチップ)
+  - 詳細(Expander 収納): ⑤⑥範囲外色(「クランプ(既定)」CheckBox + 解除時 ColorPicker。null ⇔ クランプ)⑦NaN 色(ColorPicker)
+
+### 6.11.3 実装メモ(Phase 11 完了時)
+
+- `PlaybackBar`(`Playback/PlaybackBar.cs`): `CurrentFrame` は 0〜FrameCount-1 に Coerce。`MaxFrameIndex` / `PositionText`(「13 / 50」、1 始まり)は読み取り専用 DP でテンプレートに公開。`CurrentFrameChanged`(RoutedPropertyChangedEvent)をコードビハインド連携用に追加。Unloaded でタイマー停止・再表示で再開(リーク防止)。`FrameCount=0` はスタイルトリガーで無効表示
+- `ColorScaleEditor`(`ColorMaps/ColorScaleEditor.cs`): ColorMap / IsLogarithmic / NaNColor はテンプレートから `Scale.*` へ直接 TwoWay バインド(INPC 追従)。null 許容の変換が絡む Min/Max・LevelCount・範囲外色は中間 DP(`MinimumValue` / `IsDiscrete` / `ClampBelow` 等)+ `_updating` ガードで同期。Min/Max の逆転は相互に `NumericBox.Minimum/Maximum` をバインドして既存の検証エラー規約で弾く。Min/Max の null 確定はモデル値へ復元。ラベル文字列は全て DP(既定英語、spec 5)
+- `ColorMapToBrushConverter`: ColorMap → 水平グラデーションブラシ(ComboBox のプレビューに使用。公開 API)
+- `ColorScale.Clone()` / `CopyFrom()` を追加(ダイアログの適用/キャンセルパターン支援)
+- UIA 検証: `.dev/scripts/verify-postprocessing.ps1`(再生進行・一時停止・ステップ・ループ OFF 末尾自動停止・カラーマップ切替・離散 OFF・Max 編集の凡例追従・詳細 Expander のクランプ解除)
+
 ## 7. テスト方針
 
 - **UI に依存しないロジックのみ** xUnit でテストする:
@@ -272,4 +308,5 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 | **Phase 8 — DataGrid**                           | 標準 DataGrid のフルスタイル化(最大工数のため独立フェーズ)                                                                                           | ✅ 完了 (2026-08-01) |
 | **Phase 9 — 入力・ツールバー小物**               | DropDownButton / SplitButton / PathBox / RangeSlider / ColorPicker(ColorEditor) / Vector3Box + PropertyGrid 連携(Path/Color/Vector3 PropertyItem)    | ✅ 完了 (2026-08-01) |
 | **Phase 10 — テーマ網羅+小物**                   | TreeView / ListView(GridView) / PasswordBox / RichTextBox / Hyperlink / Label のスタイル穴埋め + InfoBar / ToggleSwitch / ProgressRing               | ✅ 完了 (2026-08-01) |
+| **Phase 11 — ポスト処理系小物 第2弾**            | PlaybackBar(結果アニメーション再生バー) / ColorScaleEditor(カラーマップ設定エディタ、`ColorScale.Clone()` 追加)                                      | ✅ 完了 (2026-08-01) |
 | **(将来)Charts**                                 | 外部ライブラリ(ScottPlot / OxyPlot 等を選定)ベースの別アセンブリ `WpfCustomUI.Charts`。収束モニタ等の CAE 向け複合コントロールを提供                 | 構想                 |

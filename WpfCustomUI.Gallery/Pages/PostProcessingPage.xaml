@@ -1,0 +1,100 @@
+<UserControl x:Class="WpfCustomUI.Gallery.Pages.PostProcessingPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ui="https://schemas.wpfcustomui.dev/xaml"
+             mc:Ignorable="d">
+    <UserControl.Resources>
+        <Style x:Key="SectionHeader" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="{StaticResource Wcu.FontSize.L}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,16,0,8" />
+        </Style>
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Secondary}" />
+            <Setter Property="FontSize" Value="{StaticResource Wcu.FontSize.S}" />
+            <Setter Property="Margin" Value="0,2,0,0" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+    </UserControl.Resources>
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel MaxWidth="760" HorizontalAlignment="Left">
+
+            <TextBlock Text="Post-processing" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,4" />
+
+            <TextBlock Text="PlaybackBar(結果アニメーション再生)" Style="{StaticResource SectionHeader}" />
+            <Border Background="{DynamicResource Wcu.Brush.Surface.Panel}"
+                    BorderBrush="{DynamicResource Wcu.Brush.Border.Default}"
+                    BorderThickness="1" CornerRadius="2" Padding="10"
+                    HorizontalAlignment="Left">
+                <StackPanel Width="560">
+                    <!-- モード形状のプレビュー(はりの1次モードを CurrentFrame に連動して描画) -->
+                    <Canvas x:Name="ModeCanvas" Height="110" ClipToBounds="True">
+                        <Polyline x:Name="ModeShape"
+                                  Stroke="{DynamicResource Wcu.Brush.Accent.Default}"
+                                  StrokeThickness="2" />
+                        <Line x:Name="BaseLine"
+                              Stroke="{DynamicResource Wcu.Brush.Border.Default}"
+                              StrokeDashArray="3,3" StrokeThickness="1" />
+                    </Canvas>
+                    <ui:PlaybackBar x:Name="ModePlayback"
+                                    Margin="0,8,0,0"
+                                    FrameCount="60"
+                                    FramesPerSecond="30"
+                                    CurrentFrameChanged="ModePlayback_CurrentFrameChanged" />
+                </StackPanel>
+            </Border>
+            <TextBlock Style="{StaticResource Hint}"
+                       Text="Mode 1: 45.2 Hz のはり1次モードを再生する例。3D 描画はアプリの領分で、PlaybackBar は CurrentFrame と再生状態を公開する操作 UI に徹する。Space=再生/停止、←→=ステップ、Home/End=先頭/末尾。ループ OFF なら末尾で自動停止。" />
+
+            <TextBlock Text="速度はアプリ側 UI で(FramesPerSecond)" Style="{StaticResource SectionHeader}" />
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="再生速度" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <ComboBox x:Name="SpeedCombo" Width="90" SelectedIndex="1"
+                          SelectionChanged="SpeedCombo_SelectionChanged">
+                    <ComboBoxItem Content="15 fps" />
+                    <ComboBoxItem Content="30 fps" />
+                    <ComboBoxItem Content="60 fps" />
+                </ComboBox>
+                <ui:PlaybackBar x:Name="EmptyPlayback" Width="280" Margin="24,0,0,0"
+                                FrameCount="0" VerticalAlignment="Center" />
+                <TextBlock Text="← FrameCount=0(結果未ロード)は無効表示"
+                           VerticalAlignment="Center" Margin="8,0,0,0"
+                           Style="{StaticResource Hint}" />
+            </StackPanel>
+            <TextBlock Style="{StaticResource Hint}"
+                       Text="速度選択 UI は内蔵しない(FPS か倍率かはアプリの文化に依存するため)。FramesPerSecond DP に外から与える。" />
+
+            <TextBlock Text="ColorScaleEditor + ColorMapLegend(設定と表示が対)" Style="{StaticResource SectionHeader}" />
+            <StackPanel Orientation="Horizontal">
+                <Border Background="{DynamicResource Wcu.Brush.Surface.Panel}"
+                        BorderBrush="{DynamicResource Wcu.Brush.Border.Default}"
+                        BorderThickness="1" CornerRadius="2" Padding="10"
+                        VerticalAlignment="Top">
+                    <!-- ラベルは DP で日本語に差し替え(既定は英語) -->
+                    <ui:ColorScaleEditor x:Name="ScaleEditor"
+                                         Width="300"
+                                         ColorMapLabel="カラーマップ"
+                                         MinimumLabel="最小値"
+                                         MaximumLabel="最大値"
+                                         DiscreteLevelsLabel="離散レベル"
+                                         LogarithmicLabel="対数スケール"
+                                         LogDisabledHint="対数スケールは最小値・最大値がともに正の場合のみ使えます"
+                                         AdvancedLabel="詳細"
+                                         BelowRangeLabel="下限未満"
+                                         AboveRangeLabel="上限超過"
+                                         NaNColorLabel="NaN の色"
+                                         ClampLabel="クランプ" />
+                </Border>
+                <ui:ColorMapLegend x:Name="EditorLegend"
+                                   Height="240" Margin="24,0,0,0"
+                                   Title="応力 [MPa]" />
+            </StackPanel>
+            <TextBlock Style="{StaticResource Hint}"
+                       Text="エディタと凡例が同じ ColorScale インスタンスを共有(ライブ反映)。マップ・範囲・レベル数・対数を変えると凡例が即追従する。ダイアログで適用/キャンセルしたい場合は Clone() したコピーを編集させ、OK 時に CopyFrom() で書き戻す。" />
+
+            <Border Height="24" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

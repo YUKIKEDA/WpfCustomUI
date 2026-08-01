@@ -1,0 +1,200 @@
+<!--
+    ColorScaleEditor の既定スタイル(spec 6.11.2)。
+    主要4項目(カラーマップ/Min/Max/離散レベル/対数)を常時表示し、
+    使用頻度の低い範囲外色・NaN 色は Expander「詳細」に収納する。
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:wcu="clr-namespace:WpfCustomUI.Controls">
+
+    <wcu:ColorMapToBrushConverter x:Key="Wcu.ColorScaleEditor.MapToBrush" />
+
+    <!-- カラーマップ選択肢(プレビュー+名前) -->
+    <DataTemplate x:Key="Wcu.ColorScaleEditor.MapItemTemplate" DataType="{x:Type wcu:ColorMap}">
+        <StackPanel Orientation="Horizontal">
+            <Border Width="48" Height="10"
+                    CornerRadius="1"
+                    BorderBrush="{DynamicResource Wcu.Brush.Border.Default}"
+                    BorderThickness="1"
+                    Background="{Binding Converter={StaticResource Wcu.ColorScaleEditor.MapToBrush}}"
+                    VerticalAlignment="Center" />
+            <TextBlock Text="{Binding Name}" Margin="8,0,0,0" VerticalAlignment="Center" />
+        </StackPanel>
+    </DataTemplate>
+
+    <Style TargetType="{x:Type wcu:ColorScaleEditor}">
+        <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Primary}" />
+        <Setter Property="MinWidth" Value="260" />
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type wcu:ColorScaleEditor}">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" MinWidth="96" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <!-- ① カラーマップ -->
+                            <TextBlock Text="{TemplateBinding ColorMapLabel}"
+                                       VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <ComboBox Grid.Column="1" Margin="0,2"
+                                      ItemsSource="{TemplateBinding ColorMaps}"
+                                      ItemTemplate="{StaticResource Wcu.ColorScaleEditor.MapItemTemplate}"
+                                      SelectedItem="{Binding Scale.ColorMap,
+                                                     RelativeSource={RelativeSource TemplatedParent},
+                                                     Mode=TwoWay}" />
+
+                            <!-- ② Min / Max(逆転入力は相互の範囲制約で検証エラーになる) -->
+                            <TextBlock Grid.Row="1"
+                                       Text="{TemplateBinding MinimumLabel}"
+                                       VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <wcu:NumericBox Grid.Row="1" Grid.Column="1" Margin="0,2"
+                                            Value="{Binding MinimumValue,
+                                                    RelativeSource={RelativeSource TemplatedParent},
+                                                    Mode=TwoWay}"
+                                            Maximum="{Binding Scale.Maximum,
+                                                      RelativeSource={RelativeSource TemplatedParent},
+                                                      Mode=OneWay}"
+                                            UnitProvider="{TemplateBinding UnitProvider}"
+                                            Format="{TemplateBinding Format}" />
+
+                            <TextBlock Grid.Row="2"
+                                       Text="{TemplateBinding MaximumLabel}"
+                                       VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <wcu:NumericBox Grid.Row="2" Grid.Column="1" Margin="0,2"
+                                            Value="{Binding MaximumValue,
+                                                    RelativeSource={RelativeSource TemplatedParent},
+                                                    Mode=TwoWay}"
+                                            Minimum="{Binding Scale.Minimum,
+                                                      RelativeSource={RelativeSource TemplatedParent},
+                                                      Mode=OneWay}"
+                                            UnitProvider="{TemplateBinding UnitProvider}"
+                                            Format="{TemplateBinding Format}" />
+
+                            <!-- ③ 離散レベル -->
+                            <wcu:ToggleSwitch Grid.Row="3"
+                                              Margin="0,4,8,2"
+                                              VerticalAlignment="Center"
+                                              Content="{TemplateBinding DiscreteLevelsLabel}"
+                                              IsChecked="{Binding IsDiscrete,
+                                                          RelativeSource={RelativeSource TemplatedParent},
+                                                          Mode=TwoWay}" />
+                            <wcu:NumericBox x:Name="LevelsBox"
+                                            Grid.Row="3" Grid.Column="1" Margin="0,4,0,2"
+                                            Width="90" HorizontalAlignment="Left"
+                                            Minimum="2" Maximum="256" Increment="1" Format="F0"
+                                            Value="{Binding DiscreteLevels,
+                                                    RelativeSource={RelativeSource TemplatedParent},
+                                                    Mode=TwoWay}" />
+
+                            <!-- ④ 対数スケール -->
+                            <wcu:ToggleSwitch x:Name="LogSwitch"
+                                              Grid.Row="4" Grid.ColumnSpan="2"
+                                              Margin="0,4,0,2"
+                                              Content="{TemplateBinding LogarithmicLabel}"
+                                              IsEnabled="{TemplateBinding CanUseLog}"
+                                              ToolTipService.ShowOnDisabled="True"
+                                              IsChecked="{Binding Scale.IsLogarithmic,
+                                                          RelativeSource={RelativeSource TemplatedParent},
+                                                          Mode=TwoWay}" />
+                        </Grid>
+
+                        <!-- ⑤〜⑦ 詳細(範囲外色・NaN 色) -->
+                        <Expander Header="{TemplateBinding AdvancedLabel}"
+                                  Margin="0,6,0,0"
+                                  IsExpanded="False">
+                            <Grid Margin="0,4,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" MinWidth="96" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Text="{TemplateBinding BelowRangeLabel}"
+                                           VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <CheckBox Grid.Column="1" Margin="0,2,8,2"
+                                          VerticalAlignment="Center"
+                                          Content="{TemplateBinding ClampLabel}"
+                                          IsChecked="{Binding ClampBelow,
+                                                      RelativeSource={RelativeSource TemplatedParent},
+                                                      Mode=TwoWay}" />
+                                <wcu:ColorPicker x:Name="BelowPicker"
+                                                 Grid.Column="2" Margin="0,2"
+                                                 Width="64" HorizontalAlignment="Left"
+                                                 IsAlphaEnabled="False"
+                                                 SelectedColor="{Binding BelowColor,
+                                                                 RelativeSource={RelativeSource TemplatedParent},
+                                                                 Mode=TwoWay}" />
+
+                                <TextBlock Grid.Row="1"
+                                           Text="{TemplateBinding AboveRangeLabel}"
+                                           VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <CheckBox Grid.Row="1" Grid.Column="1" Margin="0,2,8,2"
+                                          VerticalAlignment="Center"
+                                          Content="{TemplateBinding ClampLabel}"
+                                          IsChecked="{Binding ClampAbove,
+                                                      RelativeSource={RelativeSource TemplatedParent},
+                                                      Mode=TwoWay}" />
+                                <wcu:ColorPicker x:Name="AbovePicker"
+                                                 Grid.Row="1" Grid.Column="2" Margin="0,2"
+                                                 Width="64" HorizontalAlignment="Left"
+                                                 IsAlphaEnabled="False"
+                                                 SelectedColor="{Binding AboveColor,
+                                                                 RelativeSource={RelativeSource TemplatedParent},
+                                                                 Mode=TwoWay}" />
+
+                                <TextBlock Grid.Row="2"
+                                           Text="{TemplateBinding NaNColorLabel}"
+                                           VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <wcu:ColorPicker Grid.Row="2" Grid.Column="2" Margin="0,2"
+                                                 Width="64" HorizontalAlignment="Left"
+                                                 SelectedColor="{Binding Scale.NaNColor,
+                                                                 RelativeSource={RelativeSource TemplatedParent},
+                                                                 Mode=TwoWay}" />
+                            </Grid>
+                        </Expander>
+                    </StackPanel>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsDiscrete" Value="False">
+                            <Setter TargetName="LevelsBox" Property="IsEnabled" Value="False" />
+                        </Trigger>
+                        <Trigger Property="ClampBelow" Value="True">
+                            <Setter TargetName="BelowPicker" Property="IsEnabled" Value="False" />
+                        </Trigger>
+                        <Trigger Property="ClampAbove" Value="True">
+                            <Setter TargetName="AbovePicker" Property="IsEnabled" Value="False" />
+                        </Trigger>
+                        <!-- 対数不可の理由をツールチップで可視化 -->
+                        <Trigger Property="CanUseLog" Value="False">
+                            <Setter TargetName="LogSwitch" Property="ToolTip"
+                                    Value="{Binding LogDisabledHint, RelativeSource={RelativeSource TemplatedParent}}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <Trigger Property="Scale" Value="{x:Null}">
+                <Setter Property="IsEnabled" Value="False" />
+                <Setter Property="Opacity" Value="0.6" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+</ResourceDictionary>

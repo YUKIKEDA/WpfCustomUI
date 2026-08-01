@@ -1,0 +1,164 @@
+<!--
+    PlaybackBar の既定スタイル(spec 6.11.1)。
+    24px 高の1行に ステップ戻し/再生・一時停止/ステップ送り/ループ + スライダー +
+    位置表示("13 / 50")+ FrameLabel を収める。
+    ボタン類は Focusable=False(キーボード操作はコントロール本体が受ける)。
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:wcu="clr-namespace:WpfCustomUI.Controls">
+
+    <Geometry x:Key="Wcu.Icon.Playback.Play">M2,0 L11,5.5 L2,11 Z</Geometry>
+    <Geometry x:Key="Wcu.Icon.Playback.Pause">M1.5,0 L4,0 L4,11 L1.5,11 Z M7,0 L9.5,0 L9.5,11 L7,11 Z</Geometry>
+    <Geometry x:Key="Wcu.Icon.Playback.StepForward">M1,0.5 L7.5,4.75 L1,9 Z M8.5,0.5 L10,0.5 L10,9 L8.5,9 Z</Geometry>
+    <Geometry x:Key="Wcu.Icon.Playback.StepBack">M9,0.5 L2.5,4.75 L9,9 Z M0,0.5 L1.5,0.5 L1.5,9 L0,9 Z</Geometry>
+    <!-- ループ: 円弧の矢印 -->
+    <Geometry x:Key="Wcu.Icon.Playback.Loop">M5.5,1.2 A4.3,4.3 0 1 0 9.8,5.5 L8.6,5.5 A3.1,3.1 0 1 1 5.5,2.4 L5.5,4.4 L8.5,2 L5.5,-0.6 Z</Geometry>
+
+    <!-- 透明な小型ボタン(ツールバー調) -->
+    <Style x:Key="Wcu.PlaybackBar.Button" TargetType="{x:Type ButtonBase}">
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="Width" Value="24" />
+        <Setter Property="Height" Value="22" />
+        <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Primary}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ButtonBase}">
+                    <Border x:Name="Root" Background="Transparent" CornerRadius="2">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Root" Property="Background"
+                                    Value="{DynamicResource Wcu.Brush.State.Hover}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Root" Property="Background"
+                                    Value="{DynamicResource Wcu.Brush.State.Pressed}" />
+                        </Trigger>
+                        <Trigger Property="ToggleButton.IsChecked" Value="True">
+                            <Setter TargetName="Root" Property="Background"
+                                    Value="{DynamicResource Wcu.Brush.State.Selected}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.4" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="{x:Type wcu:PlaybackBar}">
+        <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Primary}" />
+        <Setter Property="MinHeight" Value="{DynamicResource Wcu.ControlHeight}" />
+        <Setter Property="Focusable" Value="True" />
+        <Setter Property="FocusVisualStyle" Value="{DynamicResource Wcu.FocusVisual}" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type wcu:PlaybackBar}">
+                    <Border Background="Transparent">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <Button x:Name="PART_StepBackButton"
+                                    Style="{StaticResource Wcu.PlaybackBar.Button}"
+                                    AutomationProperties.Name="Step back">
+                                <Path Data="{StaticResource Wcu.Icon.Playback.StepBack}"
+                                      Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ButtonBase}}"
+                                      Width="10" Height="10" Stretch="Uniform" />
+                            </Button>
+
+                            <ToggleButton x:Name="PlayPauseButton"
+                                          Grid.Column="1"
+                                          Style="{StaticResource Wcu.PlaybackBar.Button}"
+                                          IsChecked="{Binding IsPlaying, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                                          AutomationProperties.Name="Play">
+                                <Path x:Name="PlayPauseIcon"
+                                      Data="{StaticResource Wcu.Icon.Playback.Play}"
+                                      Fill="{DynamicResource Wcu.Brush.Accent.Default}"
+                                      Width="11" Height="11" Stretch="Uniform" />
+                            </ToggleButton>
+
+                            <Button x:Name="PART_StepForwardButton"
+                                    Grid.Column="2"
+                                    Style="{StaticResource Wcu.PlaybackBar.Button}"
+                                    AutomationProperties.Name="Step forward">
+                                <Path Data="{StaticResource Wcu.Icon.Playback.StepForward}"
+                                      Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ButtonBase}}"
+                                      Width="10" Height="10" Stretch="Uniform" />
+                            </Button>
+
+                            <ToggleButton x:Name="LoopButton"
+                                          Grid.Column="3"
+                                          Style="{StaticResource Wcu.PlaybackBar.Button}"
+                                          Margin="4,0,0,0"
+                                          IsChecked="{Binding IsLooping, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                                          AutomationProperties.Name="Loop">
+                                <Path x:Name="LoopIcon"
+                                      Data="{StaticResource Wcu.Icon.Playback.Loop}"
+                                      Fill="{DynamicResource Wcu.Brush.Text.Secondary}"
+                                      Width="11" Height="11" Stretch="Uniform" />
+                            </ToggleButton>
+
+                            <Slider x:Name="FrameSlider"
+                                    Grid.Column="4"
+                                    Margin="8,0"
+                                    VerticalAlignment="Center"
+                                    Focusable="False"
+                                    Minimum="0"
+                                    Maximum="{Binding MaxFrameIndex, RelativeSource={RelativeSource TemplatedParent}}"
+                                    Value="{Binding CurrentFrame, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                                    IsSnapToTickEnabled="True"
+                                    TickFrequency="1"
+                                    IsMoveToPointEnabled="True" />
+
+                            <TextBlock Grid.Column="5"
+                                       Text="{TemplateBinding PositionText}"
+                                       VerticalAlignment="Center"
+                                       Foreground="{TemplateBinding Foreground}" />
+
+                            <TextBlock x:Name="FrameLabelText"
+                                       Grid.Column="6"
+                                       Text="{TemplateBinding FrameLabel}"
+                                       Margin="8,0,0,0"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource Wcu.Brush.Text.Secondary}" />
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsPlaying" Value="True">
+                            <Setter TargetName="PlayPauseIcon" Property="Data"
+                                    Value="{StaticResource Wcu.Icon.Playback.Pause}" />
+                            <Setter TargetName="PlayPauseButton" Property="AutomationProperties.Name" Value="Pause" />
+                        </Trigger>
+                        <Trigger SourceName="LoopButton" Property="IsChecked" Value="True">
+                            <Setter TargetName="LoopIcon" Property="Fill"
+                                    Value="{DynamicResource Wcu.Brush.Accent.Default}" />
+                        </Trigger>
+                        <Trigger Property="FrameLabel" Value="{x:Null}">
+                            <Setter TargetName="FrameLabelText" Property="Visibility" Value="Collapsed" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <Trigger Property="FrameCount" Value="0">
+                <Setter Property="IsEnabled" Value="False" />
+                <Setter Property="Opacity" Value="0.6" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+</ResourceDictionary>
