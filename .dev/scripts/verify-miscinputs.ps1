@@ -85,14 +85,18 @@ Write-Output ("initial selection: " + $comboInfo.Current.Name)
 
 # ---- 2. ドロップダウンを開いて Sy をチェック ----
 # サマリ表示はテンプレート内 TextBlock のため UIA に出ない。
-# CheckComboBox の透明トグル(TogglePattern 対応 Button)をツリー順で取得する。
+# CheckComboBox の透明トグル(TogglePattern 対応 Button)を AutomationId で取得する。
+# (ツリー順先頭はナビ下部の ThemeToggle が混ざることがあるため PART_ToggleButton で絞る)
 $toggleCond = New-Object System.Windows.Automation.AndCondition(
     (New-Object System.Windows.Automation.PropertyCondition(
         [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
         [System.Windows.Automation.ControlType]::Button)),
     (New-Object System.Windows.Automation.PropertyCondition(
         [System.Windows.Automation.AutomationElement]::IsTogglePatternAvailableProperty, $true)))
-$toggles = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $toggleCond)
+$toggles = @()
+foreach ($t in $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $toggleCond)) {
+    if ($t.Current.AutomationId -eq 'PART_ToggleButton') { $toggles += $t }
+}
 Write-Output ("toggle buttons found: " + $toggles.Count)
 $toggle = $toggles[0]  # 1つ目 = ComponentCombo
 (Get-Toggle $toggle).Toggle()

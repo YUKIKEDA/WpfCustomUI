@@ -999,6 +999,65 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 - **検証**: xUnit 25 件追加(計 197、矩形内包/クリップ除外/変形後判定/AABB 粗篩/ブロック分割/`ViewportHover.ReadId`/世代管理の勝敗とキャンセル)。UIA は `verify-viewport-picking.ps1` 拡張(ホバー Face/Node/Part 文字列+ピクセル差分+背景クリア+トグル OFF、上視点の節点矩形で**貫通 1,934 > 可視 1,833** をアサート)+ `verify-viewport-benchmark.ps1` 拡張(1M 構築完了メッセージ、**500万→1,000万の連打切替**で構築中に旧シーン統計(999,698)が維持され最終結果が 1,000万になることをアサート)全パス。viewport/deformation/section/probe/glyphs の既存 UIA 回帰も全パス
 - **バックログ**: ホバーの専用色トークン公開 / Morton 並べ替えカリング / クラスタ階層 LOD+アウトオブコア / 複数断面+ギズモ
 
+## 6.25 統合ミニ CAE シェル — 実戦統合+相互運用検証(Phase 25)
+
+(2026-08-01 の設計インタビューで決定)
+
+### 6.25.1 テーマ選定
+
+- **統合ミニ CAE シェル**を採用: Phase 13 のフルシェルデモは中央ドキュメントが疑似ビューポートのままで、実 WcuViewport + ModelTree + PropertyGrid + PlaybackBar + LogConsole を全部つないだ実戦構成は一度も検証されていない。全主要機能(コンター→選択→変形→断面→プローブ→グリフ→性能→操作性)が揃った今、単機能の積み増しより「全部を同時に使ったときに壊れないか」の検証が最も価値が高い
+- 統合バグ(双方向選択同期の再入・タブ切替の Unloaded/Loaded・フローティング×D3DImage・テーマ切替×ドッキングの複合)はここでしか見つからず、利用者向けの参照実装(ミニ CAE アプリの設計例)にもなる
+- 複数断面+ギズモ / 小粒バックログ一括 / 出荷準備(NuGet/README/CI) / スケール第3弾は次フェーズ以降の候補として継続
+
+### 6.25.2 実装形態
+
+- **既存 DockingShellWindow を改修**(新規ウィンドウは作らない): 疑似ビューポートを実 WcuViewport に置換。シェルを二重に持つとテーマ検証・回帰対象が倍になるため一本化。WARP フォールバックがあるので GPU なし環境でも動作する
+- **中央ドキュメントは 2 枚**(既存題材を流用、新規ジオメトリ生成なし):
+  - 「静解析: 円孔付き平板+ボス」— Kirsch 厳密解コンター+プローブ+選択(パーツ 2 つでツリー同期の題材)
+  - 「過渡応答: 片持ち梁」— 変形アニメ+PlaybackBar フレーム再生
+- ドキュメント 2 枚 = **WcuViewport 2 インスタンス同時稼働**となり、タブ切替(Unloaded/Loaded)・ドキュメントのフローティング(ウィンドウ再親付け×D3DImage)・テーマ切替の複合パスを実戦検証する
+
+### 6.25.3 ModelTree 同期
+
+- **双方向選択同期**: ツリーのパーツノード選択→ビューポートのパーツ選択ハイライト、ビューポートのパーツピック→ツリー選択が追従。**再入ガード**(同期中フラグ)でイベントループを遮断
+- **チェックボックス→`ViewportMesh.IsVisible`**(可視性)
+- 面/節点選択はツリーに対応ノードがないため反映せず、ステータスバーにサマリ表示
+
+### 6.25.4 PropertyGrid(選択連動)
+
+- パーツ選択→その `ViewportMesh` の表示プロパティ(名前/色/不透明度/エッジ/クリップ可否等)を編集、変更は即 3D 反映(`OnMeshPropertyChanged` 経路の統合検証)
+- 選択なし→ビューポート設定(変形スケール/投影方式等)へフォールバック(PropertyGrid の対象切替の検証を兼ねる)
+
+### 6.25.5 その他の結線(全部結線)
+
+- **プローブ→LogConsole**: プローブ結果(単位付きフォーマット)をログへ記録
+- **ColorMapLegend+ColorScaleEditor**: アクティブドキュメントの ColorScale を共有・編集(ドキュメント切替で凡例が追従)
+- **PlaybackBar**: 過渡ドキュメント下部に常設(フレーム列再生はアプリ責務の参照実装)
+- **StatusBar**: ホバー/選択サマリ+統計(三角形数/構築時間)
+
+### 6.25.6 検証
+
+- **UIA シェル検証スクリプト新設**(`--dockshell` 起動): ツリー選択→3D ハイライトのピクセル差分 / 3D ピック→ツリー選択文字列 / 可視性チェック→描画差分 / プロパティ変更→色反映 / プローブ→ログ行アサート / タブ切替+フローティング+テーマ切替の複合操作でクラッシュなし+両テーマスクショ
+- **既存 UIA 全スクリプトの回帰**
+- xUnit は新設しない(同期ロジックはシェル内コードのため。純粋ロジックが切り出せた場合のみ追加)
+
+### 6.25.7 実装メモ(2026-08-01 完了)
+
+- **実装**(すべて Gallery 側。ライブラリ変更なし):
+  - `ShellScenes.cs` 新設: 静解析(Kirsch 円孔平板 4,608 三角形+円筒ボス 192 三角形)と過渡応答(片持ち梁 2,000 三角形、モード形状+減衰自由振動 90 フレーム)のシーン生成。既存ページの厳密解コードを流用
+  - `DockingShellWindow` 改修: 疑似ビューポート(Border+TextBlock)を実 `WcuViewport` ×2 に置換。ドキュメント内に選択モードラジオ(なし/パーツ/面/節点/プローブ)+選択解除/Fit、過渡側に変形スケール Slider+振動トグル+`PlaybackBar`(`CurrentFrameChanged` → `Displacements` 差し替え)
+  - **ModelTree 双方向同期**: `ShellDocument` レコード(ビューポート/ColorScale/ノード⇔メッシュ辞書)で管理。ツリー選択→`Selection.AddPart`、ピック→`TreeNode.IsSelected`(ListBoxItem と TwoWay バインド済み)。`_syncingSelection` 再入ガード。目アイコン(`IsVisible`)→`ViewportMesh.IsVisible`、F2 名前変更→`Mesh.Name`
+  - **PropertyGrid 連動**: パーツ選択時 [名前/表示/パーツ色/不透明度/エッジ表示]、非選択時はアクティブドキュメントの [変形スケール/平行投影/コンター/ホバープリハイライト] にフォールバック。各 `PropertyItem.PropertyChanged`(Value)で即時反映
+  - **アクティブドキュメント連動**: `DockingManager.ActiveContentChanged` → 凡例(`ColorMapLegend`)+`ColorScaleEditor` が対象 ColorScale を共有、StatusBar 統計(三角形数/構築時間)も追従。プローブは `ProbePicked` → LogBuffer へ単位付き記録(注釈の自動追加は既定のまま)
+  - StatusBar: 選択サマリ(パーツ/面/節点の合計)+ホバー(`HoverChanged`)+統計。`AutomationId` = ShellSelectionStatus / ShellHoverStatus / ShellStatsStatus
+- **検証**: xUnit 291 全緑(新設なし)。`verify-shell.ps1` 新設で 18 アサート全 PASS:
+  - 非同期構築完了(三角形 4,800)→ ツリー選択→ハイライトのピクセル差分(diff≈4,800)→ 選択解除→ 3D ピック→ツリー選択(SelectionItemPattern.IsSelected)の双方向
+  - PropertyGrid「表示」チェック OFF→ボス消失のピクセル差分 / プローブ→LogConsole 行を正規表現アサート(σ_vM = ... MPa)
+  - タブ切替→統計が 過渡応答(2,000)に追従→PlaybackBar フレーム 40 でピクセル差分(≈50k)→タブ復帰(Unloaded→Loaded 再構築)→ホバーステータス
+  - 過渡ドキュメントのタブドラッグでフローティング化→その状態でライトテーマ切替→クラッシュなし+全ペインのライト反映を目視確認(shell-light.png)
+  - UIA 知見: WPF のオーナー付きウィンドウはデスクトップ直下でなくオーナーの子として現れる / カスタムコントロール(PropertyGrid/LogConsole/PlaybackBar)は AutomationPeer を持たないため内部の標準コントロール(CheckBox/Slider/Text)を行ラベルや Maximum 値で特定する
+- **既存 UIA 全回帰**: 16 スクリプト実行し全 PASS(docking / viewport 全 7 本 / charts 3 本 / postprocessing / pickers / miscinputs / morecontrols / datagrid)。`verify-miscinputs.ps1` はトグルボタンをツリー順先頭で取っており ThemeToggle を誤爆する脆さがあったため `PART_ToggleButton` の AutomationId で絞る修正を実施(アプリ側の不具合ではない)
+
 ## 7. テスト方針
 
 - **UI に依存しないロジックのみ** xUnit でテストする:
@@ -1037,3 +1096,4 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 | **Phase 22 — ビューポート第7弾(大規模メッシュ性能)**    | 表面三角形 5,000万目標。頂点/インデックスのチャンク分割(ピック ID オフセット対応) / 並列ジオメトリ構築+中間コピー削減 / EdgeExtractionLimit DP(既定 500万) / GetStatistics() 統計 API / 新ページ「3D Benchmark」(合成波面 10万〜5,000万+FPS 計測)                  | ✅ 完了 (2026-08-01) |
 | **Phase 23 — ビューポート第8弾(スケール第2弾: 1〜2億)** | 法線 octahedral 16bit 圧縮(28B→20B) / 構築中間ストリーミング化 / 操作中 LOD(グリッドクラスタリング約 1/20、変形・振動アニメ対応) / チャンク AABB フラスタムカリング / InteractiveLodThreshold DP(既定 500万) / 統計拡張 / Benchmark ページ拡張(1億/2億+LOD トグル) | ✅ 完了 (2026-08-01) |
 | **Phase 24 — ビューポート第9弾(操作性仕上げ)**          | 常時非同期ジオメトリ構築(世代管理+旧シーン表示+IsGeometryBuilding DP+進捗/完了イベント) / ホバープリハイライト(静止時 ID キャッシュ方式、既定 ON、Probe 節点プレビュー) / 貫通選択(RubberBandSelectionMode DP、CPU 並列錐台判定) / Benchmark・Picking ページ拡張   | ✅ 完了 (2026-08-01) |
+| **Phase 25 — 統合ミニ CAE シェル**                      | DockingShellWindow の疑似ビューポートを実 WcuViewport 化(静解析 Kirsch+過渡片持ち梁の 2 ドキュメント) / ModelTree 双方向選択同期+可視性 / PropertyGrid 選択連動 / プローブ→LogConsole / ColorScaleEditor+凡例共有 / PlaybackBar / UIA シェル検証新設               | ✅ 完了               |

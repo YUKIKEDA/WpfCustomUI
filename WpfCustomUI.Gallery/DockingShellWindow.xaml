@@ -4,7 +4,7 @@
               xmlns:ui="https://schemas.wpfcustomui.dev/xaml"
               xmlns:ad="clr-namespace:AvalonDock;assembly=AvalonDock"
               xmlns:adl="clr-namespace:AvalonDock.Layout;assembly=AvalonDock"
-              Title="CAE Shell — ドッキングデモ"
+              Title="CAE Shell — 統合デモ"
               Height="800" Width="1280">
     <DockPanel>
         <!-- メニュー -->
@@ -23,11 +23,27 @@
             </MenuItem>
         </Menu>
 
-        <!-- ステータスバー -->
+        <!-- ステータスバー(選択/ホバー/統計はビューポートに連動。spec 6.25.5) -->
         <StatusBar DockPanel.Dock="Bottom">
             <StatusBarItem x:Name="StatusMessage" Content="準備完了" />
             <Separator />
-            <StatusBarItem Content="タブをドラッグ: ドッキングガイドに重ねて再配置 / 外へドロップでフローティング" />
+            <StatusBarItem>
+                <TextBlock x:Name="SelectionStatus"
+                           AutomationProperties.AutomationId="ShellSelectionStatus"
+                           Text="選択: なし" />
+            </StatusBarItem>
+            <Separator />
+            <StatusBarItem>
+                <TextBlock x:Name="HoverStatus"
+                           AutomationProperties.AutomationId="ShellHoverStatus"
+                           Text="ホバー: -" />
+            </StatusBarItem>
+            <Separator />
+            <StatusBarItem>
+                <TextBlock x:Name="StatsStatus"
+                           AutomationProperties.AutomationId="ShellStatsStatus"
+                           Text="" />
+            </StatusBarItem>
         </StatusBar>
 
         <!-- ドッキング領域 -->
@@ -46,22 +62,49 @@
                         </adl:LayoutAnchorable>
                     </adl:LayoutAnchorablePane>
 
-                    <!-- 中央: ドキュメント + 下部ログ -->
+                    <!-- 中央: ドキュメント(実 WcuViewport ×2。spec 6.25.2) + 下部ログ -->
                     <adl:LayoutPanel Orientation="Vertical">
                         <adl:LayoutDocumentPane>
-                            <adl:LayoutDocument Title="Viewport — 静解析 (Case 1)" ContentId="Shell.Doc.Case1">
-                                <Border x:Name="ViewportCase1" Background="{DynamicResource Wcu.Brush.Surface.Window}">
-                                    <TextBlock Text="3D Viewport (Case 1)"
-                                               Foreground="{DynamicResource Wcu.Brush.Text.Disabled}"
-                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                </Border>
+                            <adl:LayoutDocument Title="静解析: 円孔付き平板" ContentId="Shell.Doc.Case1">
+                                <DockPanel x:Name="StaticDoc" Background="{DynamicResource Wcu.Brush.Surface.Window}">
+                                    <WrapPanel DockPanel.Dock="Top" Margin="8,6" ItemHeight="26">
+                                        <TextBlock Text="選択:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                        <RadioButton x:Name="PickNoneRadio" Content="なし" GroupName="ShellPick"
+                                                     VerticalAlignment="Center" Checked="OnPickModeChanged" />
+                                        <RadioButton x:Name="PickPartRadio" Content="パーツ" GroupName="ShellPick" IsChecked="True"
+                                                     VerticalAlignment="Center" Margin="12,0,0,0" Checked="OnPickModeChanged" />
+                                        <RadioButton x:Name="PickFaceRadio" Content="面" GroupName="ShellPick"
+                                                     VerticalAlignment="Center" Margin="12,0,0,0" Checked="OnPickModeChanged" />
+                                        <RadioButton x:Name="PickNodeRadio" Content="節点" GroupName="ShellPick"
+                                                     VerticalAlignment="Center" Margin="12,0,0,0" Checked="OnPickModeChanged" />
+                                        <RadioButton x:Name="PickProbeRadio" Content="プローブ" GroupName="ShellPick"
+                                                     VerticalAlignment="Center" Margin="12,0,0,0" Checked="OnPickModeChanged" />
+                                        <Button Content="選択解除" Click="OnClearSelection" Margin="16,0,0,0" />
+                                        <Button Content="Fit" Click="OnFitStatic" MinWidth="52" Margin="8,0,0,0" />
+                                    </WrapPanel>
+                                    <ui:WcuViewport x:Name="ViewportStatic" PickMode="Part" />
+                                </DockPanel>
                             </adl:LayoutDocument>
-                            <adl:LayoutDocument Title="Viewport — 固有値解析 (Case 2)" ContentId="Shell.Doc.Case2">
-                                <Border x:Name="ViewportCase2" Background="{DynamicResource Wcu.Brush.Surface.Window}">
-                                    <TextBlock Text="3D Viewport (Case 2)"
-                                               Foreground="{DynamicResource Wcu.Brush.Text.Disabled}"
-                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                </Border>
+                            <adl:LayoutDocument Title="過渡応答: 片持ち梁" ContentId="Shell.Doc.Case2">
+                                <DockPanel x:Name="TransientDoc" Background="{DynamicResource Wcu.Brush.Surface.Window}">
+                                    <WrapPanel DockPanel.Dock="Top" Margin="8,6" ItemHeight="26">
+                                        <ui:ToggleSwitch x:Name="AnimToggle" Content="振動アニメ" />
+                                        <TextBlock Text="変形スケール:" VerticalAlignment="Center" Margin="20,0,8,0" />
+                                        <Slider x:Name="ScaleSlider" Width="140" VerticalAlignment="Center"
+                                                Minimum="0" Maximum="30" Value="10" />
+                                        <TextBlock VerticalAlignment="Center" Margin="8,0,0,0"
+                                                   Text="{Binding Value, ElementName=ScaleSlider, StringFormat=×{0:0.0}}" />
+                                        <Button Content="Fit" Click="OnFitTransient" MinWidth="52" Margin="16,0,0,0" />
+                                    </WrapPanel>
+                                    <!-- フレーム列再生はアプリ責務(spec 6.18.3)。CurrentFrameChanged で Displacements を差し替える -->
+                                    <ui:PlaybackBar x:Name="Playback" DockPanel.Dock="Bottom" Margin="8,4"
+                                                    AutomationProperties.AutomationId="ShellPlaybackBar"
+                                                    FramesPerSecond="30"
+                                                    CurrentFrameChanged="OnPlaybackFrameChanged" />
+                                    <ui:WcuViewport x:Name="ViewportTransient" PickMode="Part"
+                                                    DeformationScale="{Binding Value, ElementName=ScaleSlider}"
+                                                    IsDeformationAnimated="{Binding IsChecked, ElementName=AnimToggle}" />
+                                </DockPanel>
                             </adl:LayoutDocument>
                         </adl:LayoutDocumentPane>
 
@@ -72,18 +115,21 @@
                         </adl:LayoutAnchorablePane>
                     </adl:LayoutPanel>
 
-                    <!-- 右: プロパティ + 凡例 -->
+                    <!-- 右: プロパティ + 凡例(アクティブドキュメントの ColorScale を共有・編集。spec 6.25.5) -->
                     <adl:LayoutAnchorablePane DockWidth="300">
                         <adl:LayoutAnchorable Title="プロパティ" ContentId="Shell.Properties">
                             <ui:PropertyGrid x:Name="Props" />
                         </adl:LayoutAnchorable>
                         <adl:LayoutAnchorable Title="凡例" ContentId="Shell.Legend">
-                            <Border x:Name="LegendHost" Background="{DynamicResource Wcu.Brush.Surface.Window}">
-                                <ui:ColorMapLegend x:Name="Legend"
-                                                   Title="応力 [MPa]"
-                                                   Height="240" Margin="16"
-                                                   HorizontalAlignment="Left" VerticalAlignment="Top" />
-                            </Border>
+                            <ScrollViewer x:Name="LegendHost" VerticalScrollBarVisibility="Auto"
+                                          Background="{DynamicResource Wcu.Brush.Surface.Window}">
+                                <StackPanel Margin="12">
+                                    <ui:ColorMapLegend x:Name="Legend"
+                                                       Height="220"
+                                                       HorizontalAlignment="Left" />
+                                    <ui:ColorScaleEditor x:Name="ScaleEditor" Margin="0,12,0,0" />
+                                </StackPanel>
+                            </ScrollViewer>
                         </adl:LayoutAnchorable>
                     </adl:LayoutAnchorablePane>
 
