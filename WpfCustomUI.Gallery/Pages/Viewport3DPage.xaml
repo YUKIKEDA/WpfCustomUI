@@ -1,0 +1,66 @@
+<UserControl x:Class="WpfCustomUI.Gallery.Pages.Viewport3DPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ui="https://schemas.wpfcustomui.dev/xaml"
+             mc:Ignorable="d">
+    <UserControl.Resources>
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Secondary}" />
+            <Setter Property="FontSize" Value="{StaticResource Wcu.FontSize.S}" />
+            <Setter Property="Margin" Value="0,2,0,0" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+    </UserControl.Resources>
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel MaxWidth="860" HorizontalAlignment="Left">
+
+            <TextBlock Text="3D Viewport (Direct3D 11)" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,4" />
+            <TextBlock Style="{StaticResource Hint}"
+                       Text="WpfCustomUI.Viewport3D は Silk.NET の D3D11 バインディング+D3DImage による自作エンジン(依存は Silk.NET のみ、コアは依存ゼロのまま)。中ボタンドラッグ=回転 / Shift+中ボタン=パン / ホイール=カーソル位置へズーム / 中ボタンダブルクリック=Fit。左ボタンは将来のピッキング用に予約。" />
+
+            <!-- 操作列 -->
+            <WrapPanel Margin="0,12,0,8" ItemHeight="28">
+                <ui:ToggleSwitch x:Name="OrthoToggle" Content="平行投影"
+                                 Checked="OnOrthoChanged" Unchecked="OnOrthoChanged" />
+                <ui:ToggleSwitch x:Name="ContourToggle" Content="コンター" IsChecked="True" Margin="20,0,0,0" />
+                <ui:ToggleSwitch x:Name="EdgeToggle" Content="エッジ" IsChecked="True" Margin="20,0,0,0" />
+                <ui:ToggleSwitch x:Name="DiscreteToggle" Content="離散 10 分割"
+                                 Checked="OnDiscreteChanged" Unchecked="OnDiscreteChanged" Margin="20,0,0,0" />
+                <ui:ToggleSwitch x:Name="BossToggle" Content="ボスを表示" IsChecked="True"
+                                 Checked="OnBossChanged" Unchecked="OnBossChanged" Margin="20,0,0,0" />
+                <Button Content="Fit" Click="OnFitClick" MinWidth="60" Margin="20,0,0,0" />
+            </WrapPanel>
+
+            <!-- ビューポート + 凡例 -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <ui:WcuViewport x:Name="Viewport"
+                                Grid.Column="0"
+                                Height="480"
+                                ShowContours="{Binding IsChecked, ElementName=ContourToggle}"
+                                ShowEdges="{Binding IsChecked, ElementName=EdgeToggle}" />
+
+                <ui:ColorMapLegend x:Name="Legend"
+                                   Grid.Column="1"
+                                   Height="300"
+                                   Margin="16,0,0,0"
+                                   VerticalAlignment="Center"
+                                   Title="von Mises [MPa]" />
+            </Grid>
+            <TextBlock x:Name="RendererInfo" Style="{StaticResource Hint}" />
+
+            <TextBlock Style="{StaticResource Hint}" Margin="0,12,0,0"
+                       Text="デモ: 円孔付き平板の一軸引張(Kirsch の厳密解による応力集中、孔縁で公称応力の 3 倍)。ViewportMesh(節点座標 + 三角形インデックス + 節点スカラー)を MeshSource にバインドし、ColorScale は右の ColorMapLegend と同一インスタンスを共有している。FEM 要素→三角形化はアプリ責務(このページでは構造格子から直接生成)。座標は double で受けて内部で再センタリング後に GPU へ送るため、大座標値のモデルでもジッタしない。" />
+            <TextBlock Style="{StaticResource Hint}" Margin="0,6,0,0"
+                       Text="描画はオンデマンド(操作・変更時のみ)。テーマ切替には自動追従し、GPU がない環境では WARP(ソフトウェア)+WriteableBitmap 経路に自動フォールバックする。" />
+
+            <Border Height="24" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

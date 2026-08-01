@@ -4,4 +4,6 @@
   <Project Path="WpfCustomUI.Charts/WpfCustomUI.Charts.csproj" />
   <Project Path="WpfCustomUI.Docking/WpfCustomUI.Docking.csproj" />
   <Project Path="WpfCustomUI.Gallery/WpfCustomUI.Gallery.csproj" />
+  <Project Path="WpfCustomUI.Viewport3D/WpfCustomUI.Viewport3D.csproj" />
+  <Project Path="WpfCustomUI.Viewport3D.Tests/WpfCustomUI.Viewport3D.Tests.csproj" />
 </Solution>

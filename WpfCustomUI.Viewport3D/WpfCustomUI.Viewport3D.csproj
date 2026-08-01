@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- D3D11 / D3D9Ex / DXGI の COM ポインタ操作に必要 -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <!--
+    3D ビューポートは外部ライブラリ(Silk.NET, MIT)への依存を持つアセンブリ(spec 6.16)。
+    ドッキング・チャートと同じく、コア(WpfCustomUI.Controls)の依存ゼロ方針を守るためここに隔離する。
+    レンダリングは Silk.NET の Direct3D11 バインディング + D3DImage 相互運用による自作エンジン。
+  -->
+  <PropertyGroup>
+    <PackageId>WpfCustomUI.Viewport3D</PackageId>
+    <Version>0.1.0</Version>
+    <Description>Direct3D 11 based 3D viewport (mesh + contour rendering) for WpfCustomUI.</Description>
+    <RepositoryType>git</RepositoryType>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WpfCustomUI.Controls\WpfCustomUI.Controls.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="WpfCustomUI.Viewport3D.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Silk.NET.Direct3D.Compilers" Version="2.23.0" />
+    <PackageReference Include="Silk.NET.Direct3D11" Version="2.23.0" />
+    <PackageReference Include="Silk.NET.Direct3D9" Version="2.23.0" />
+    <PackageReference Include="Silk.NET.DXGI" Version="2.23.0" />
+  </ItemGroup>
+
+</Project>

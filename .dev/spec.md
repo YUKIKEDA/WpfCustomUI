@@ -467,6 +467,63 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 - **ギャラリー**: ナビ下部に「ライトテーマ」ToggleSwitch 常設。`--light` 起動引数を追加(スクリーンショット・スモーク用)
 - **検証**: `--smoke` 両テーマ通過、xUnit 94 件通過。`.dev/scripts/capture-themes.ps1`(同一プロセスで Dark 全17ページ → 実行時トグル切替 → Light 全17ページを撮影 = 実行時切替検証を兼ねる)+ `capture-dockshell-light.ps1`(ドッキングシェル)で全数目視レビュー済み。ハードコード色の静的検査では ColorPicker のチェッカー柄/色相グラデーション・WcuWindow 閉じるボタン赤(#E81123)・ドッキングガイド半透明色など「テーマ非依存で意図的」なもののみ残置
 
+## 6.16 3D ビューポート (Phase 16)
+
+(2026-08-01 の設計インタビューで決定)
+
+### 6.16.1 方向性とレンダリング基盤
+
+- **ハイブリッド方針を 3D にも適用**: 別アセンブリ `WpfCustomUI.Viewport3D` で実レンダリング付きビューポートを提供する。従来の「3D 描画はアプリの領分」を転換し、見送ってきた周辺部品(断面 UI・プローブ・コンター描画等)が将来ここに合流できる土台を作る。コアの依存ゼロは維持
+- **基盤は Silk.NET の Direct3D11 + DXGI バインディング + D3DImage で自作エンジン**:
+  - Helix Toolkit(v3 は現役)は検討の末不採用。理由: 内部依存 SharpDX が上流開発終了で長期基盤として負債、毎フレーム頂点更新(変形アニメ)がマネージドジオメトリ経由で大規模メッシュに不向き、アイソバンド/断面キャップ/GPU ピッキング等は結局カスタムシェーダ地獄になり「制御できない土台の上でエンジンを書く」ことになる
+  - OpenGL ではなく D3D11 を選ぶ決定的理由: **D3DImage(D3D11 共有テクスチャ→D3D9Ex)は WPF 合成にネイティブ統合され、エアスペース問題が起きない**。AvalonDock のフローティング/タブや BusyOverlay を 3D ビューに重ねられることが本ライブラリでは必須要件。OpenGL は HwndHost 経由になり品質が落ちる
+  - 自作のため Phase 16 は「最小核」、以降のフェーズで積み増す長期戦と割り切る(1フェーズ完結の ScottPlot 型ではない)
+
+### 6.16.2 Phase 16 のスコープ(最小核)
+
+- **`WcuViewport` コントロール**: D3DImage ホスト、デバイス/共有テクスチャ管理、リサイズ・デバイスロスト処理、MSAA、WARP フォールバック(GPU なし・RDP 対応)、背景色は Wcu トークン連動(`ThemeChanged` 追従)
+- **描画はオンデマンド**(変更・操作時のみ再描画。連続レンダーループなし)
+- **カメラ**: オービット回転 / パン / ズーム / Fit、透視投影⇔平行投影(CAE は平行投影多用のため初回から両対応)
+- **メッシュ表示**: 三角形メッシュ+ライティング(単色)、節点スカラー+`ColorScale` の 1D テクスチャによるコンター表示、ワイヤフレーム/エッジ重畳
+- **軸トライアッド**(隅の XYZ 表示)
+- **見送り(Phase 17 以降)**: ピッキング/選択(選択モデル設計は別議論)、ViewCube、断面カット、変形アニメーション、グリフ、注釈、ジェスチャのカスタマイズ機構
+
+### 6.16.3 データ API
+
+- **`ViewportMesh` モデル**(ChartSeries と同じ流儀): 節点座標+三角形インデックス+任意の節点スカラー配列。配列差し替えで更新通知。パーツ単位に `Name` / `Color` / `IsVisible` / `ShowEdges`
+- `WcuViewport.MeshSource` に `ObservableCollection<ViewportMesh>` をバインド。コンター用 `ColorScale` はビューポートレベルで1つ(`ColorMapLegend` と共有可能)
+- **FEM 要素→三角形化(表面抽出・高次要素分割)はアプリ責務**。要素タイプ網羅はソルバー依存のドメインロジックであり、ライブラリの境界外(コンター描画ユーティリティを外した判断と同型)
+- 座標は **double で受け、内部でモデル中心へ再センタリングしてから float 化**して GPU へ(大座標値での精度ジッタ対策)
+
+### 6.16.4 マウス操作(既定)
+
+- **中ボタンドラッグ=回転 / Shift+中ボタン=パン / ホイール=カーソル位置へズーム / 中ボタンダブルクリック=Fit**(NX/SolidWorks/Ansys 系の主流)
+- **左ボタンは将来のピッキング/選択用に予約**(Charts の操作コンフリクトの教訓)
+- ホイールは Charts と違い素のホイールでズーム(3D ビューポートの共通期待。主用途はドッキングのドキュメント領域でスクロール競合なし。ギャラリーのデモページ側でのみ高さ固定で対処)
+- **回転はターンテーブル、既定 Z-up**(`UpAxis` で Y-up 切替可)。トラックボールは不採用
+
+### 6.16.5 検証
+
+- **数学層を xUnit で厚くテスト**(自作エンジンの利点): カメラ行列(ビュー/透視/平行)、Fit 境界計算、オービット回転、再センタリング、法線計算、スカラー→テクスチャ座標変換
+- **描画はギャラリー+UIA スクリーンショット横断**(既存の型): サンプルメッシュ+スカラー場で回転・ズーム・投影切替・コンター切替・両テーマを撮影して目視。`ColorMapLegend` との `ColorScale` 共有デモを含める
+- WARP 前提の決定的ピクセル比較テストは作り込まない(GPU/ドライバ差で壊れやすく費用対効果が低い)
+
+### 6.16.6 実装メモ(2026-08-01 完了)
+
+- **依存**: Silk.NET 2.23.0(Direct3D11 / Direct3D9 / DXGI / Direct3D.Compilers)。シェーダは HLSL ソース文字列を d3dcompiler_47(Windows 標準搭載)で実行時コンパイル(vs_4_0 / ps_4_0、FL10 GPU でも動作)
+- **表示経路は 2 系統**(`ViewportRenderer` が自動選択):
+  - **ハードウェア**: D3D11 で MSAA 4x 描画 → 非 MSAA 共有テクスチャへ Resolve → D3D9Ex が共有ハンドルを開き、そのサーフェスを `D3DImage.SetBackBuffer`(enableSoftwareFallback=true)。描画は `D3DImage.Lock` 中に行い `AddDirtyRect` で提示
+  - **ソフトウェア(WARP / D3D9 不可)**: WARP アダプタの共有テクスチャはハードウェア D3D9 から開けないため、ステージングテクスチャへ CPU 読み戻しして WriteableBitmap に転送(オンデマンド描画なので実用上十分)
+- **行列規約**: System.Numerics(行優先・行ベクトル)に合わせ、HLSL 側は `row_major` + `mul(v, M)` で転置アップロード不要
+- **シェーディング**: 両面ヘッドライト(`abs(dot(n, eyeDir))`)。エッジ重畳は同一頂点バッファを LineList で再利用し、ラインシェーダで NDC 深度を微小手前シフト(`z -= 0.0005 * w`)して Z ファイティング回避
+- **コンター**: `ColorScale.Sample` を 256 texel サンプリングした 1D テクスチャ(ポイントサンプリング=離散レベルの境界が鈍らない)。範囲外は Below/AboveRangeColor、NaN は NaNColor(透明なら discard)、対数スケールはシェーダ内 log10。`ColorScale.PropertyChanged` でテクスチャ再構築(凡例と同一インスタンス共有が成立)
+- **カメラ**(`ViewportCamera`): Target+Yaw/Pitch/Distance のターンテーブル(Pitch ±89.5° クランプ)。平行投影の高さは `2·d·tan(fov/2)` で透視と見かけサイズ一致(投影切替でモデルサイズが変わらない)。near/far は距離とシーン半径から自動。カーソル位置ズームは「注視点深度の直下点を固定する Target 平行移動」で実装し、両投影で不変性を単体テスト済み
+- **軸トライアッドは WPF オーバーレイ**(Canvas に Line+TextBlock、カメラ基底ベクトルへの射影で更新)。GPU パス追加より単純で、テーマ・DPI にも自然に追従する。D3DImage が WPF 合成にネイティブ統合されるからこそ成立する構え
+- **`WcuViewport`**: lookless Control(PART_Image / PART_TriadCanvas)。描画は Dispatcher でコアレスされるオンデマンド(`InvalidateViewport`)。ジオメトリ再構築(GPU バッファ)は Positions/TriangleIndices/ScalarValues の差し替え時のみ、色・表示切替は再描画のみ。デバイスロスト時はレンダラーを破棄して 1 回だけ再作成を試み、連続失敗で停止。UIA から領域特定できるよう AutomationPeer(ClassName=WcuViewport)を実装
+- **注意(ギャラリーで踏んだ罠)**: `IsChecked="True"` の ToggleSwitch は XAML パース中(コンストラクタのフィールド初期化前)に Checked を発火するため、イベントハンドラには null ガードが必要
+- **デモ**(`Viewport3DPage`): 円孔付き平板の一軸引張(Kirsch 厳密解の von Mises、孔縁で応力集中 3 倍)+円筒ボスの 2 パーツ。構造格子(孔側を二乗分布で細分)から直接三角形生成。投影/コンター/エッジ/離散 10 分割/パーツ表示のトグル+Fit ボタン+`ColorMapLegend` 共有
+- **検証**: xUnit 29 件(カメラ 14+ジオメトリ 11+境界 4)。`.dev/scripts/verify-viewport.ps1`(UIA+実マウスイベント: 中ボタン回転→ホイールズーム→ダブルクリック Fit→平行投影→コンター/エッジ切替→離散分割→ライトテーマ切替を撮影)+ `capture-viewport-light.ps1`(ライト起動)。ハードウェア D3D11+D3DImage 経路で全項目目視確認済み
+
 ## 7. テスト方針
 
 - **UI に依存しないロジックのみ** xUnit でテストする:
@@ -496,3 +553,4 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 | **Phase 13 — ドッキング**                        | `WpfCustomUI.Docking` 新設(Dirkster.AvalonDock 4.74.1)。WcuDockTheme(ResourceKeys 再配色+Wcu トークン)/ DockLayout 永続化ヘルパー / フルシェルデモ                        | ✅ 完了 (2026-08-01) |
 | **Phase 14 — Charts**                            | `WpfCustomUI.Charts` 新設(ScottPlot 5)。WcuPlot/WcuChartTheme(トークン配色+ThemeChanged 追従)/ ConvergenceMonitor / HistoryChart / FrequencyResponsePlot / HistogramChart | ✅ 完了 (2026-08-01) |
 | **Phase 15 — ライトテーマ**                      | Tokens.Light.xaml(VS 2022 Light 準拠)+ セマンティック Color キー正式化(Docking/Charts 移行)+ ナビ常設テーマトグル + GetSystemTheme() + 全ページ×両テーマ検証             | ✅ 完了 (2026-08-01) |
+| **Phase 16 — 3D ビューポート(最小核)**           | `WpfCustomUI.Viewport3D` 新設(Silk.NET D3D11 + D3DImage 自作エンジン)。WcuViewport(カメラ/Fit/両投影) / ViewportMesh(三角形+節点スカラー) / ColorScale コンター / エッジ重畳 / 軸トライアッド / WARP フォールバック | ✅ 完了 (2026-08-01) |

@@ -1,0 +1,34 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="clr-namespace:WpfCustomUI.Viewport3D">
+
+    <!--
+        WcuViewport 既定スタイル。
+        描画本体は D3DImage / WriteableBitmap を持つ PART_Image、
+        軸トライアッドは PART_TriadCanvas に WPF オーバーレイとして描かれる
+        (D3DImage は WPF 合成にネイティブ統合されるため、この重ね合わせが成立する)。
+    -->
+    <Style TargetType="{x:Type local:WcuViewport}">
+        <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Surface.Window}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Border.Default}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Focusable" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type local:WcuViewport}">
+                    <Border
+                        Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}">
+                        <Grid ClipToBounds="True">
+                            <Image x:Name="PART_Image" Stretch="Fill" />
+                            <Canvas x:Name="PART_TriadCanvas" IsHitTestVisible="False" />
+                        </Grid>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+</ResourceDictionary>
