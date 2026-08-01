@@ -25,7 +25,7 @@ internal readonly record struct ContourSettings(
     Vector4 BelowColor,
     Vector4 AboveColor);
 
-/// <summary>HLSL の cbuffer FrameConstants と 1:1 対応(176 バイト、16 バイト境界)。</summary>
+/// <summary>HLSL の cbuffer FrameConstants と 1:1 対応(192 バイト、16 バイト境界)。</summary>
 [StructLayout(LayoutKind.Sequential)]
 internal struct FrameConstants
 {
@@ -37,6 +37,7 @@ internal struct FrameConstants
     public Vector4 BelowColor;
     public Vector4 AboveColor;
     public Vector4 ViewportInfo; // xy=ピクセルサイズ, z=ポイント直径(px)
+    public Vector4 DeformParams; // x=変形スケール(振動アニメ係数込み)
 }
 
 /// <summary>描画 1 パーツ分の入力(メッシュ+選択ハイライト情報)。</summary>
@@ -268,7 +269,10 @@ internal sealed unsafe class ViewportRenderer : IDisposable
         Vector4 edgeColor,
         Vector4 highlightColor,
         Vector4 nodeColor,
-        float nodePointSizePixels)
+        float nodePointSizePixels,
+        float deformationScale,
+        bool showUndeformedWireframe,
+        Vector4 undeformedColor)
     {
         if (_msaaRtv.Handle is null)
         {
@@ -307,6 +311,7 @@ internal sealed unsafe class ViewportRenderer : IDisposable
             BelowColor = contour.BelowColor,
             AboveColor = contour.AboveColor,
             ViewportInfo = new Vector4(Width, Height, nodePointSizePixels, 0.0f),
+            DeformParams = new Vector4(deformationScale, 0.0f, 0.0f, 0.0f),
         };
 
         // パス 1: 不透明メッシュ → 半透明メッシュの順に三角形を描画
@@ -357,6 +362,40 @@ internal sealed unsafe class ViewportRenderer : IDisposable
             ctx->IASetIndexBuffer(mesh.EdgeIndexBufferHandle, DxgiFormat.FormatR32Uint, 0);
             ctx->IASetPrimitiveTopology(D3DPrimitiveTopology.D3D11PrimitiveTopologyLinelist);
             ctx->DrawIndexed(mesh.EdgeIndexCount, 0, 0);
+        }
+
+        // パス 2.5: 非変形ワイヤフレーム重畳(spec 6.18.4)。DeformParams.x=0 で元形状の
+        // エッジを半透明描画し、変形前後の対比を見せる。深度書き込みなしで面を汚さない
+        if (showUndeformedWireframe)
+        {
+            ctx->OMSetBlendState(_alphaBlendState.Handle, null, 0xFFFFFFFF);
+            ctx->OMSetDepthStencilState(_highlightDepthState.Handle, 0);
+
+            constants.DeformParams.X = 0.0f;
+            foreach (var item in items)
+            {
+                var mesh = item.Mesh;
+                if (mesh.EdgeIndexCount == 0)
+                {
+                    continue;
+                }
+
+                constants.ObjectColor = undeformedColor;
+                constants.ScalarParams.Z = 0.0f;
+                UploadConstants(in constants);
+
+                BindVertexBuffer(ctx, mesh);
+                ctx->IASetInputLayout(_lineLayout.Handle);
+                ctx->VSSetShader(_lineVs.Handle, null, 0);
+                ctx->PSSetShader(_linePs.Handle, null, 0);
+                ctx->IASetIndexBuffer(mesh.EdgeIndexBufferHandle, DxgiFormat.FormatR32Uint, 0);
+                ctx->IASetPrimitiveTopology(D3DPrimitiveTopology.D3D11PrimitiveTopologyLinelist);
+                ctx->DrawIndexed(mesh.EdgeIndexCount, 0, 0);
+            }
+
+            constants.DeformParams.X = deformationScale;
+            ctx->OMSetBlendState(null, null, 0xFFFFFFFF);
+            ctx->OMSetDepthStencilState(_depthState.Handle, 0);
         }
 
         // パス 3: 選択面ハイライト(半透明オーバーレイ、深度書き込みなし+微小手前シフト)
@@ -443,9 +482,9 @@ internal sealed unsafe class ViewportRenderer : IDisposable
     /// メッシュインデックスは渡した <paramref name="meshes"/> リスト内の位置。
     /// </summary>
     public (int MeshIndex, int TriangleIndex)? PickPixel(
-        IReadOnlyList<GpuMesh> meshes, in Matrix4x4 viewProj, int x, int y)
+        IReadOnlyList<GpuMesh> meshes, in Matrix4x4 viewProj, int x, int y, float deformationScale)
     {
-        var region = PickRegion(meshes, in viewProj, x, y, 1, 1);
+        var region = PickRegion(meshes, in viewProj, x, y, 1, 1, deformationScale);
         foreach (var (meshIndex, triangles) in region)
         {
             foreach (var triangle in triangles)
@@ -462,7 +501,8 @@ internal sealed unsafe class ViewportRenderer : IDisposable
     /// GPU が描画したピクセルの列挙なので「見えているものだけ」が返る(spec 6.17.4)。
     /// </summary>
     public Dictionary<int, HashSet<int>> PickRegion(
-        IReadOnlyList<GpuMesh> meshes, in Matrix4x4 viewProj, int x, int y, int width, int height)
+        IReadOnlyList<GpuMesh> meshes, in Matrix4x4 viewProj, int x, int y, int width, int height,
+        float deformationScale)
     {
         var result = new Dictionary<int, HashSet<int>>();
 
@@ -476,7 +516,7 @@ internal sealed unsafe class ViewportRenderer : IDisposable
             return result;
         }
 
-        RenderIdPass(meshes, in viewProj);
+        RenderIdPass(meshes, in viewProj, deformationScale);
 
         var regionWidth = x1 - x0;
         var regionHeight = y1 - y0;
@@ -551,7 +591,7 @@ internal sealed unsafe class ViewportRenderer : IDisposable
     }
 
     /// <summary>ID パスを描画する(R=パーツID+1 / G=三角形インデックス、非 MSAA、専用深度)。</summary>
-    private void RenderIdPass(IReadOnlyList<GpuMesh> meshes, in Matrix4x4 viewProj)
+    private void RenderIdPass(IReadOnlyList<GpuMesh> meshes, in Matrix4x4 viewProj, float deformationScale)
     {
         EnsurePickTargets();
 
@@ -575,7 +615,11 @@ internal sealed unsafe class ViewportRenderer : IDisposable
         ctx->VSSetConstantBuffers(0, 1, &cb);
         ctx->PSSetConstantBuffers(0, 1, &cb);
 
-        var constants = new FrameConstants { ViewProj = viewProj };
+        var constants = new FrameConstants
+        {
+            ViewProj = viewProj,
+            DeformParams = new Vector4(deformationScale, 0.0f, 0.0f, 0.0f),
+        };
 
         for (var i = 0; i < meshes.Count; i++)
         {
@@ -662,6 +706,10 @@ internal sealed unsafe class ViewportRenderer : IDisposable
 
     public GpuMesh? CreateMesh(ViewportMesh mesh, double originX, double originY, double originZ) =>
         GpuMesh.Create(_device, mesh, originX, originY, originZ);
+
+    /// <summary>変位バッファのみ差し替える(過渡再生のフレーム更新用、spec 6.18.3)。</summary>
+    public void UpdateMeshDisplacements(GpuMesh mesh, double[]? displacements) =>
+        mesh.UpdateDisplacements(_context, displacements);
 
     public GpuSelectionMesh? CreateSelectionMesh(
         ViewportMesh mesh,
@@ -832,7 +880,18 @@ internal sealed unsafe class ViewportRenderer : IDisposable
             fixed (byte* pNormal = semanticNormal)
             fixed (byte* pTexCoord = semanticTexCoord)
             {
-                var meshElements = stackalloc InputElementDesc[3]
+                // 変位(TEXCOORD1)は slot 1 の独立バッファから読む(spec 6.18.2)
+                var displacementElement = new InputElementDesc
+                {
+                    SemanticName = pTexCoord,
+                    SemanticIndex = 1,
+                    Format = DxgiFormat.FormatR32G32B32Float,
+                    InputSlot = 1,
+                    AlignedByteOffset = 0,
+                    InputSlotClass = InputClassification.PerVertexData,
+                };
+
+                var meshElements = stackalloc InputElementDesc[4]
                 {
                     new InputElementDesc
                     {
@@ -855,32 +914,37 @@ internal sealed unsafe class ViewportRenderer : IDisposable
                         AlignedByteOffset = 24,
                         InputSlotClass = InputClassification.PerVertexData,
                     },
+                    displacementElement,
                 };
                 SilkMarshal.ThrowHResult(device->CreateInputLayout(
-                    meshElements, 3,
+                    meshElements, 4,
                     meshVsCode.GetBufferPointer(), meshVsCode.GetBufferSize(),
                     _meshLayout.GetAddressOf()));
 
-                var lineElement = new InputElementDesc
+                var lineElements = stackalloc InputElementDesc[2]
                 {
-                    SemanticName = pPosition,
-                    Format = DxgiFormat.FormatR32G32B32Float,
-                    AlignedByteOffset = 0,
-                    InputSlotClass = InputClassification.PerVertexData,
+                    new InputElementDesc
+                    {
+                        SemanticName = pPosition,
+                        Format = DxgiFormat.FormatR32G32B32Float,
+                        AlignedByteOffset = 0,
+                        InputSlotClass = InputClassification.PerVertexData,
+                    },
+                    displacementElement,
                 };
                 SilkMarshal.ThrowHResult(device->CreateInputLayout(
-                    &lineElement, 1,
+                    lineElements, 2,
                     lineVsCode.GetBufferPointer(), lineVsCode.GetBufferSize(),
                     _lineLayout.GetAddressOf()));
 
-                // ピックパス: メッシュ頂点バッファ(28B ストライド)の POSITION だけを読む
+                // ピックパス: メッシュ頂点バッファ(28B ストライド)の POSITION + 変位を読む
                 SilkMarshal.ThrowHResult(device->CreateInputLayout(
-                    &lineElement, 1,
+                    lineElements, 2,
                     pickVsCode.GetBufferPointer(), pickVsCode.GetBufferSize(),
                     _pickLayout.GetAddressOf()));
 
-                // ポイントパス: position + corner(20B ストライド)
-                var pointElements = stackalloc InputElementDesc[2]
+                // ポイントパス: position + corner + displacement(32B ストライド、slot 0 のみ)
+                var pointElements = stackalloc InputElementDesc[3]
                 {
                     new InputElementDesc
                     {
@@ -896,9 +960,17 @@ internal sealed unsafe class ViewportRenderer : IDisposable
                         AlignedByteOffset = 12,
                         InputSlotClass = InputClassification.PerVertexData,
                     },
+                    new InputElementDesc
+                    {
+                        SemanticName = pTexCoord,
+                        SemanticIndex = 1,
+                        Format = DxgiFormat.FormatR32G32B32Float,
+                        AlignedByteOffset = 20,
+                        InputSlotClass = InputClassification.PerVertexData,
+                    },
                 };
                 SilkMarshal.ThrowHResult(device->CreateInputLayout(
-                    pointElements, 2,
+                    pointElements, 3,
                     pointVsCode.GetBufferPointer(), pointVsCode.GetBufferSize(),
                     _pointLayout.GetAddressOf()));
             }
@@ -1016,10 +1088,10 @@ internal sealed unsafe class ViewportRenderer : IDisposable
 
     private static void BindVertexBuffer(ID3D11DeviceContext* ctx, GpuMesh mesh)
     {
-        var vb = mesh.VertexBufferHandle;
-        var stride = GpuMesh.VertexStride;
-        uint offset = 0;
-        ctx->IASetVertexBuffers(0, 1, &vb, &stride, &offset);
+        var buffers = stackalloc ID3D11Buffer*[2] { mesh.VertexBufferHandle, mesh.DisplacementBufferHandle };
+        var strides = stackalloc uint[2] { GpuMesh.VertexStride, GpuMesh.DisplacementStride };
+        var offsets = stackalloc uint[2] { 0, 0 };
+        ctx->IASetVertexBuffers(0, 2, buffers, strides, offsets);
     }
 
     // ================= 解放 =================

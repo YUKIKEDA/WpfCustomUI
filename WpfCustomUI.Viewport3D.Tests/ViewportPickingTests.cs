@@ -161,6 +161,42 @@ public class ViewportPickingTests
     }
 
     [Fact]
+    public void FindNearestNodeOnTriangle_DeformationScaleFollowsDisplacedPosition()
+    {
+        // カメラは +X 側から YZ 平面を見る。node 2 は変位 (0,0,+2)×scale 2 で z=6 へ移動、
+        // node 0 は変位で node 2 の元位置(z=2 付近)へ移動する
+        var camera = CreateCamera();
+        var viewProj = GetViewProj(camera);
+
+        var mesh = new ViewportMesh
+        {
+            Positions =
+            [
+                0.0, -2.0, -2.0, // node 0
+                0.0, 2.0, -2.0,  // node 1
+                0.0, 0.0, 2.0,   // node 2
+            ],
+            TriangleIndices = [0, 1, 2],
+            Displacements =
+            [
+                0.0, 1.0, 2.0,   // node 0 → scale 2 で (0, 0, 2)
+                0.0, 0.0, 0.0,
+                0.0, 0.0, 2.0,   // node 2 → scale 2 で (0, 0, 6)
+            ],
+        };
+
+        // 元の node 2 の位置(0,0,2)をクリック
+        var cursor = ViewportPicking.ProjectToPixel(
+            new Vector3(0.0f, 0.0f, 2.0f), in viewProj, Width, Height)!.Value;
+
+        // 変形なし → node 2 がヒット、変形スケール 2 → そこへ来た node 0 がヒット
+        Assert.Equal(2, ViewportPicking.FindNearestNodeOnTriangle(
+            mesh, 0, 0.0, 0.0, 0.0, in viewProj, Width, Height, cursor));
+        Assert.Equal(0, ViewportPicking.FindNearestNodeOnTriangle(
+            mesh, 0, 0.0, 0.0, 0.0, in viewProj, Width, Height, cursor, deformationScale: 2.0));
+    }
+
+    [Fact]
     public void FindNodesInRectangle_RecenteringOriginIsApplied()
     {
         var camera = CreateCamera();

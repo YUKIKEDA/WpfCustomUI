@@ -582,6 +582,64 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 - **左ボタン操作**: down で位置記録+キャプチャ → 4dip 超の移動でラバーバンド(トライアッドと同じ Canvas 上の Rectangle、アクセント破線)→ up で単点 or 領域ピック。Ctrl=トグル(矩形は追加)。空クリック(背景)は置換選択の Clear として機能。トライアッドの Canvas 表示切替は要素単位に変更(ラバーバンドと共存のため)
 - **検証結果**: xUnit 74 件(既存 29+選択モデル 10+ピッキング数学 8+標準視点/ViewCube 対応 27)。`.dev/scripts/verify-viewport-picking.ps1`(UIA+実マウス: 面クリック=1→Ctrl 追加=2→Ctrl 再クリック=1→矩形=865→節点クリック/矩形=427→パーツ=1→空クリック解除→解除ボタン→正面/上/等角ボタン→ViewCube TOP クリック→ライトテーマ、サマリ文字列を全アサート+スクショ 8 枚)。ハードウェア D3D11 経路で全項目確認済み
 
+## 6.18 ビューポート第3弾 — 変形表示+アニメーション(Phase 18)
+
+(2026-08-01 の設計インタビューで決定)
+
+### 6.18.1 テーマ選定
+
+- **変形表示+アニメーション**を採用。モード形状・過渡応答の確認は CAE ポスト処理の最頻出機能で、コンター(Phase 16)・選択(Phase 17)に続く自然な柱
+- Helix を捨てて自作エンジンにした決定的動機のひとつ「毎フレーム頂点更新を大規模メッシュで効率よく」の価値を初めて回収するフェーズ
+- 断面カット/プローブ/注釈は変形と独立に後から積めるため次フェーズ以降へ。小粒改善(ホバープリハイライト/貫通選択/エッジ選択)も引き続きバックログ
+
+### 6.18.2 変形の適用方式 — GPU 頂点シェーダ
+
+- **変位を頂点属性に追加**(position + normal + scalar + displacement = 40B ストライド)し、シェーダ内で `pos + disp × scale` を計算(scale は cbuffer)
+  - 変形スケール変更・モード振動アニメ(scale を sin で振る)は**頂点更新ゼロ** — 百万節点でも描画するだけ
+  - フレーム切替(過渡応答)は**変位属性だけを Dynamic バッファ部分更新**(バッファ再作成不要)
+  - ID ピッキング/ハイライト/エッジの各シェーダにも同じ変位を適用し、変形状態のままのピックが画面と正確に一致
+- **法線は非変形のまま**(変形後の法線再計算は GPU では困難。実用スケールの変形表示では一般的な簡略化。フレーム差替時の CPU 再計算オプションは将来拡張)
+
+### 6.18.3 データ API と再生の責務分担
+
+- 変位は **`ViewportMesh.Displacements`**(長さ 3N の double 配列、x0,y0,z0,...)。ScalarValues と同じ「配列インスタンス差し替えで更新検知」の流儀
+- ビューポートに **`DeformationScale` DP**
+- **モード振動アニメはライブラリ内蔵**(`IsDeformationAnimated` DP + `DeformationAnimationPeriod` DP。scale を ±1 の正弦で振る)。描画レートと密結合で、GPU 方式なら頂点更新ゼロなので内蔵が必然
+- **フレーム列(過渡応答)の再生はアプリ責務**: PlaybackBar(Phase 11)のイベントで Displacements/ScalarValues を差し替えるだけ。データの時間割当・ロードはソルバ固有なのでライブラリが抱えない(LogBuffer/ConvergenceSeries と同じ境界線)。フレーム切替が部分更新で効率的に動くことはライブラリ側が保証
+- フレーム列モデルの内蔵は不採用(全フレームをメモリに抱える前提になり大規模過渡解析で破綻)
+
+### 6.18.4 付随機能
+
+- **非変形形状の重畳**(`ShowUndeformedWireframe` DP): 変形前形状をワイヤフレームで薄く重ねる。GPU 方式なら「同じエッジパスを scale=0 でもう一度描く」だけで追加バッファ不要
+- **自動スケール推奨値**(`GetSuggestedDeformationScale()`): 「最大変位がモデル代表寸法の約 5% になるスケール」を返す計算ヘルパ(Ansys の Auto Scale 相当)。適用はアプリの判断(DP には自動適用しない)。純粋関数で単体テスト容易
+- 変位大きさのコンター自動生成は入れない(スカラーは ScalarValues にアプリが計算して渡せばよく、物理量の意味づけに踏み込まない境界線を維持)
+
+### 6.18.5 デモ
+
+- **片持ち平板の曲げモード形状**(Euler-Bernoulli の解析解。Kirsch 解と同じ「厳密解でデモデータを作る」流儀)
+  - 1〜3 次モード切替(ComboBox → Displacements 差し替え=部分更新経路のデモ)
+  - 変形スケール Slider+自動スケール適用ボタン / モード振動トグル / 非変形ワイヤフレームトグル
+  - **PlaybackBar 連携**: 減衰自由振動(モード重ね合わせ×減衰)のフレーム列を事前生成し、フレーム変更で Displacements/ScalarValues を差し替える「アプリ責務の過渡再生」の参照実装
+- 既存の円孔平板デモは残す(同一ページ内セクション追加か別ページ化はレイアウトを見て実装時に判断)
+
+### 6.18.6 検証
+
+- **xUnit**: `GetSuggestedDeformationScale` の計算(最大変位・代表寸法・ゼロ変位の境界)、モード振動の時間→スケール係数(純粋関数化して波形を検証)、Displacements 配列の検証(長さ不正の扱い)などの数学/変換層
+- **UIA**: 文字列アサートができないため**ビューポート領域のピクセル差分を数値アサート**: スケール 0→適用で差分あり / 振動アニメ中の 2 時点で差分あり / 停止中は差分なし。加えてモード切替・非変形重畳・PlaybackBar 再生・ライトテーマのスクリーンショット目視(従来と同じ流儀)
+
+### 6.18.7 実装メモ(2026-08-01 完了)
+
+- **変位バッファの持ち方は設計から微修正**: 40B インターリーブではなく、既存の 28B 頂点バッファ(slot 0)+**独立した Dynamic 変位バッファ(slot 1、12B/頂点、`TEXCOORD1`)**の 2 スロット構成にした。フレーム切替時に `Map/WriteDiscard` で変位だけを差し替えられ、Immutable のジオメトリ本体に一切触れない(部分更新の意図は設計どおり、むしろ徹底)
+- cbuffer に `DeformParams`(x=実効スケール)を追加(192B)。Mesh / Line / Pick / Point の全シェーダが `pos + disp × DeformParams.x` を適用
+- `WcuViewport.OnMeshPropertyChanged` で `Displacements` 差し替えを軽量経路に分岐(`_displacementDirtyMeshes` → `EnsureDisplacements()` が変位バッファのみ更新)。`Positions` / `ScalarValues` / `TriangleIndices` は従来どおり全再構築
+- 振動アニメは `CompositionTarget.Rendering` 購読で毎フレーム `InvalidateViewport`(オンデマンド描画の明示的例外)。実効スケール = `DeformationScale × sin(2πt/T)` は `ViewportDeformation.GetAnimationFactor`(純粋関数)で計算
+- ピック(GPU ID パス+CPU 節点数学)は**直前に描画した実効スケール**(`_lastEffectiveDeformationScale`)を使い、画面とヒット判定が常に一致
+- 選択節点ポイントのクワッド頂点(32B)にも変位属性を埋め込み、変形表示中も選択ハイライトが追従。Displacements 差し替え時は選択バッファも再構築
+- 非変形ワイヤフレームは全可視メッシュのエッジバッファを `DeformParams.x=0`+エッジ色 α0.35 の半透明・深度書き込みなしで重畳描画(追加バッファなし)
+- 長さ不正の Displacements はゼロ埋め扱い(`ViewportDeformation.ToDisplacementArray`)。例外は投げない
+- デモは別ページ **「3D Deformation」**(`ViewportDeformationPage`)として追加(既存の円孔平板ページはそのまま)。βL = 1.8751/4.6941/7.8548 の 1〜3 次曲げ+減衰自由振動 90 フレーム
+- 検証: xUnit 92 件(+14)全パス / `verify-viewport-deformation.ps1` のピクセル差分アサート 7 件全 PASS(自動スケール ×5.4 = 0.05×√(100²+40²)/1 と一致)/ 既存 `verify-viewport.ps1`・`verify-viewport-picking.ps1` 回帰なし / 両テーマ目視 OK
+
 ## 7. テスト方針
 
 - **UI に依存しないロジックのみ** xUnit でテストする:
@@ -613,3 +671,4 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 | **Phase 15 — ライトテーマ**                      | Tokens.Light.xaml(VS 2022 Light 準拠)+ セマンティック Color キー正式化(Docking/Charts 移行)+ ナビ常設テーマトグル + GetSystemTheme() + 全ページ×両テーマ検証             | ✅ 完了 (2026-08-01) |
 | **Phase 16 — 3D ビューポート(最小核)**           | `WpfCustomUI.Viewport3D` 新設(Silk.NET D3D11 + D3DImage 自作エンジン)。WcuViewport(カメラ/Fit/両投影) / ViewportMesh(三角形+節点スカラー) / ColorScale コンター / エッジ重畳 / 軸トライアッド / WARP フォールバック | ✅ 完了 (2026-08-01) |
 | **Phase 17 — ビューポート第2弾(選択+操作系)**    | GPU ID ピッキング(パーツ/面/節点) / ViewportSelection モデル+ハイライト描画内蔵 / クリック・Ctrl トグル・矩形選択 / SetStandardView + クリック式 ViewCube(補間アニメ付き)                                        | ✅ 完了 (2026-08-01) |
+| **Phase 18 — ビューポート第3弾(変形+アニメ)**    | ViewportMesh.Displacements + GPU 頂点シェーダ変形(スケールは cbuffer、フレーム切替は部分更新) / DeformationScale / モード振動アニメ内蔵 / 非変形ワイヤフレーム重畳 / 自動スケール推奨値 / PlaybackBar 連携デモ      | ✅ 完了 (2026-08-01) |

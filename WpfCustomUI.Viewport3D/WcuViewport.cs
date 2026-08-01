@@ -91,7 +91,30 @@ public class WcuViewport : Control
             nameof(PickMode), typeof(ViewportPickMode), typeof(WcuViewport),
             new PropertyMetadata(ViewportPickMode.None, OnPickModeChanged));
 
+    public static readonly DependencyProperty DeformationScaleProperty =
+        DependencyProperty.Register(
+            nameof(DeformationScale), typeof(double), typeof(WcuViewport),
+            new PropertyMetadata(1.0, OnVisualOptionChanged),
+            v => double.IsFinite((double)v));
+
+    public static readonly DependencyProperty IsDeformationAnimatedProperty =
+        DependencyProperty.Register(
+            nameof(IsDeformationAnimated), typeof(bool), typeof(WcuViewport),
+            new PropertyMetadata(false, OnIsDeformationAnimatedChanged));
+
+    public static readonly DependencyProperty DeformationAnimationPeriodProperty =
+        DependencyProperty.Register(
+            nameof(DeformationAnimationPeriod), typeof(TimeSpan), typeof(WcuViewport),
+            new PropertyMetadata(TimeSpan.FromSeconds(1.0)),
+            v => (TimeSpan)v > TimeSpan.Zero);
+
+    public static readonly DependencyProperty ShowUndeformedWireframeProperty =
+        DependencyProperty.Register(
+            nameof(ShowUndeformedWireframe), typeof(bool), typeof(WcuViewport),
+            new PropertyMetadata(false, OnVisualOptionChanged));
+
     private readonly List<(ViewportMesh Source, GpuMesh Gpu)> _gpuMeshes = [];
+    private readonly HashSet<ViewportMesh> _displacementDirtyMeshes = [];
     private readonly List<RenderItem> _renderItems = [];
     private readonly List<GpuMesh> _visibleGpus = [];
     private readonly List<ViewportMesh> _visibleSources = [];
@@ -134,6 +157,11 @@ public class WcuViewport : Control
     private double _animStartPitch;
     private double _animDeltaYaw;
     private double _animDeltaPitch;
+
+    // モード振動アニメーション(spec 6.18.3)
+    private bool _isDeformationTickAttached;
+    private DateTime _deformationAnimationStart;
+    private float _lastEffectiveDeformationScale = 1.0f;
 
     // 軸トライアッド+ラバーバンドの WPF オーバーレイ要素
     private readonly Line[] _triadLines = new Line[3];
@@ -224,6 +252,42 @@ public class WcuViewport : Control
         set => SetValue(PickModeProperty, value);
     }
 
+    /// <summary>
+    /// 変形表示のスケール係数(spec 6.18)。各メッシュの <see cref="ViewportMesh.Displacements"/> に
+    /// この値を掛けた位置で描画する(GPU 頂点シェーダで適用)。0 で非変形表示。
+    /// 推奨値は <see cref="GetSuggestedDeformationScale"/> で得られる。
+    /// </summary>
+    public double DeformationScale
+    {
+        get => (double)GetValue(DeformationScaleProperty);
+        set => SetValue(DeformationScaleProperty, value);
+    }
+
+    /// <summary>
+    /// モード振動アニメーション(spec 6.18.3)。true の間、表示上の変形量が
+    /// DeformationScale × sin(2πt/T) で連続的に振動する(固有モードの可視化用)。
+    /// オンデマンド描画の例外として毎フレーム描画になる点に注意。
+    /// </summary>
+    public bool IsDeformationAnimated
+    {
+        get => (bool)GetValue(IsDeformationAnimatedProperty);
+        set => SetValue(IsDeformationAnimatedProperty, value);
+    }
+
+    /// <summary>振動アニメーションの周期(既定 1 秒)。</summary>
+    public TimeSpan DeformationAnimationPeriod
+    {
+        get => (TimeSpan)GetValue(DeformationAnimationPeriodProperty);
+        set => SetValue(DeformationAnimationPeriodProperty, value);
+    }
+
+    /// <summary>非変形形状のワイヤフレームを半透明で重畳表示する(spec 6.18.4)。</summary>
+    public bool ShowUndeformedWireframe
+    {
+        get => (bool)GetValue(ShowUndeformedWireframeProperty);
+        set => SetValue(ShowUndeformedWireframeProperty, value);
+    }
+
     /// <summary>カメラ。アプリから直接操作(視点の保存/復元など)できる。</summary>
     public ViewportCamera Camera { get; }
 
@@ -244,6 +308,33 @@ public class WcuViewport : Control
         {
             Camera.FitToBounds(_localBounds);
         }
+    }
+
+    /// <summary>
+    /// 「最大変位がモデル代表寸法(境界ボックス対角長)の 5% に見える」推奨変形スケールを返す
+    /// (spec 6.18.4)。変位を持つメッシュがない場合は 1.0。適用はアプリの責務
+    /// (<c>viewport.DeformationScale = viewport.GetSuggestedDeformationScale()</c>)。
+    /// </summary>
+    public double GetSuggestedDeformationScale(double targetFraction = ViewportDeformation.DefaultTargetFraction)
+    {
+        var meshes = MeshSource?.OfType<ViewportMesh>() ?? [];
+        var bounds = Bounds3D.Empty;
+        var maxDisplacement = 0.0;
+        foreach (var mesh in meshes)
+        {
+            bounds = bounds.Union(ViewportGeometry.ComputeBounds(mesh.Positions));
+            maxDisplacement = Math.Max(
+                maxDisplacement, ViewportDeformation.GetMaxDisplacementMagnitude(mesh.Displacements));
+        }
+
+        var diagonal = bounds.IsEmpty
+            ? 0.0
+            : Math.Sqrt(
+                (bounds.MaxX - bounds.MinX) * (bounds.MaxX - bounds.MinX)
+                + (bounds.MaxY - bounds.MinY) * (bounds.MaxY - bounds.MinY)
+                + (bounds.MaxZ - bounds.MinZ) * (bounds.MaxZ - bounds.MinZ));
+
+        return ViewportDeformation.ComputeSuggestedScale(maxDisplacement, diagonal, targetFraction);
     }
 
     /// <summary>
@@ -296,6 +387,46 @@ public class WcuViewport : Control
             _isAnimatingView = false;
             CompositionTarget.Rendering -= OnViewAnimationTick;
         }
+    }
+
+    // ================= モード振動アニメーション(spec 6.18.3) =================
+
+    private static void OnIsDeformationAnimatedChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
+        ((WcuViewport)d).UpdateDeformationAnimation();
+
+    private void UpdateDeformationAnimation()
+    {
+        var shouldRun = IsDeformationAnimated && IsLoaded;
+        if (shouldRun && !_isDeformationTickAttached)
+        {
+            _deformationAnimationStart = DateTime.UtcNow;
+            _isDeformationTickAttached = true;
+            CompositionTarget.Rendering += OnDeformationAnimationTick;
+        }
+        else if (!shouldRun && _isDeformationTickAttached)
+        {
+            _isDeformationTickAttached = false;
+            CompositionTarget.Rendering -= OnDeformationAnimationTick;
+        }
+
+        // 停止時は静的な変形表示(係数 1)へ戻す
+        InvalidateViewport();
+    }
+
+    private void OnDeformationAnimationTick(object? sender, EventArgs e) => InvalidateViewport();
+
+    /// <summary>現在の実効変形スケール(振動アニメの正弦係数込み)を求める。</summary>
+    private float GetEffectiveDeformationScale()
+    {
+        var scale = DeformationScale;
+        if (_isDeformationTickAttached)
+        {
+            scale *= ViewportDeformation.GetAnimationFactor(
+                (DateTime.UtcNow - _deformationAnimationStart).TotalSeconds,
+                DeformationAnimationPeriod.TotalSeconds);
+        }
+
+        return (float)scale;
     }
 
     /// <summary>角度差を [-π, π] へ正規化する(Yaw 補間の最短経路用)。</summary>
@@ -374,6 +505,7 @@ public class WcuViewport : Control
     {
         ThemeManager.ThemeChanged += OnThemeChanged;
         _renderBroken = false;
+        UpdateDeformationAnimation();
         InvalidateViewport();
     }
 
@@ -381,6 +513,7 @@ public class WcuViewport : Control
     {
         ThemeManager.ThemeChanged -= OnThemeChanged;
         StopViewAnimation();
+        UpdateDeformationAnimation();
         CancelPicking();
         ReleaseRenderer();
     }
@@ -409,6 +542,7 @@ public class WcuViewport : Control
             _renderer.Resize(pixelWidth, pixelHeight);
 
             EnsureGeometry();
+            EnsureDisplacements();
             EnsureColorMap();
             EnsureSelectionBuffers();
             BuildRenderLists();
@@ -423,6 +557,9 @@ public class WcuViewport : Control
             var highlightColor = ToVector4(accent, 0.55);
             var nodeColor = ToVector4(accent, 1.0);
             var pointSize = (float)(7.0 * dpi.DpiScaleX);
+
+            // ピック(PickPixel 等)が直前の描画と同じ変形量を使えるよう保存する
+            _lastEffectiveDeformationScale = GetEffectiveDeformationScale();
 
             if (_renderer.CanUseD3DImage)
             {
@@ -485,7 +622,8 @@ public class WcuViewport : Control
             _renderer.Render(
                 _renderItems, in viewProj, Camera.GetEyeDirection(),
                 ToVector4(background, 1.0), in contour, ShowContours, ToVector4(edgeColor, 1.0),
-                highlightColor, nodeColor, pointSize);
+                highlightColor, nodeColor, pointSize,
+                _lastEffectiveDeformationScale, ShowUndeformedWireframe, ToVector4(edgeColor, 0.35));
 
             _d3dImage.AddDirtyRect(new Int32Rect(0, 0, _renderer.Width, _renderer.Height));
         }
@@ -502,7 +640,8 @@ public class WcuViewport : Control
         _renderer!.Render(
             _renderItems, in viewProj, Camera.GetEyeDirection(),
             ToVector4(background, 1.0), in contour, ShowContours, ToVector4(edgeColor, 1.0),
-            highlightColor, nodeColor, pointSize);
+            highlightColor, nodeColor, pointSize,
+            _lastEffectiveDeformationScale, ShowUndeformedWireframe, ToVector4(edgeColor, 0.35));
 
         if (_softwareBitmap is null || sizeChanged)
         {
@@ -544,6 +683,7 @@ public class WcuViewport : Control
         }
 
         _gpuMeshes.Clear();
+        _displacementDirtyMeshes.Clear(); // 再構築で最新の変位が取り込まれる
         _geometryDirty = false;
 
         var meshes = MeshSource?.OfType<ViewportMesh>().ToList() ?? [];
@@ -586,6 +726,28 @@ public class WcuViewport : Control
             _hasAutoFitted = true;
             Camera.FitToBounds(_localBounds);
         }
+    }
+
+    /// <summary>
+    /// Displacements が差し替えられたメッシュの変位バッファだけを更新する(spec 6.18.2)。
+    /// ジオメトリ本体(座標・法線・スカラー)は再構築しないため、過渡再生の毎フレーム更新に耐える。
+    /// </summary>
+    private void EnsureDisplacements()
+    {
+        if (_displacementDirtyMeshes.Count == 0 || _renderer is null)
+        {
+            return;
+        }
+
+        foreach (var (source, gpu) in _gpuMeshes)
+        {
+            if (_displacementDirtyMeshes.Contains(source))
+            {
+                _renderer.UpdateMeshDisplacements(gpu, source.Displacements);
+            }
+        }
+
+        _displacementDirtyMeshes.Clear();
     }
 
     /// <summary>選択ハイライトの GPU バッファを選択モデルと同期する(spec 6.17.3)。</summary>
@@ -781,6 +943,12 @@ public class WcuViewport : Control
             or nameof(ViewportMesh.ScalarValues))
         {
             _geometryDirty = true;
+        }
+        else if (e.PropertyName == nameof(ViewportMesh.Displacements) && sender is ViewportMesh mesh)
+        {
+            // 変位差し替えは軽量経路: 変位バッファのみ更新+選択節点クワッド再構築
+            _displacementDirtyMeshes.Add(mesh);
+            _selectionDirty = true;
         }
 
         InvalidateViewport();
@@ -1016,7 +1184,7 @@ public class WcuViewport : Control
 
         var px = (int)(positionDip.X * dpiScale);
         var py = (int)(positionDip.Y * dpiScale);
-        var hit = _renderer!.PickPixel(_visibleGpus, in viewProj, px, py);
+        var hit = _renderer!.PickPixel(_visibleGpus, in viewProj, px, py, _lastEffectiveDeformationScale);
 
         Selection.BeginUpdate();
         try
@@ -1062,7 +1230,8 @@ public class WcuViewport : Control
                     var cursor = new Vector2(px, py);
                     var node = ViewportPicking.FindNearestNodeOnTriangle(
                         mesh, h.TriangleIndex, _originX, _originY, _originZ,
-                        in viewProj, _renderer.Width, _renderer.Height, cursor);
+                        in viewProj, _renderer.Width, _renderer.Height, cursor,
+                        _lastEffectiveDeformationScale);
                     if (node is { } n)
                     {
                         if (additive)
@@ -1097,7 +1266,8 @@ public class WcuViewport : Control
         var x1 = (int)Math.Ceiling(Math.Max(startDip.X, endDip.X) * dpiScale);
         var y1 = (int)Math.Ceiling(Math.Max(startDip.Y, endDip.Y) * dpiScale);
 
-        var region = _renderer!.PickRegion(_visibleGpus, in viewProj, x0, y0, x1 - x0, y1 - y0);
+        var region = _renderer!.PickRegion(
+            _visibleGpus, in viewProj, x0, y0, x1 - x0, y1 - y0, _lastEffectiveDeformationScale);
 
         Selection.BeginUpdate();
         try
@@ -1129,7 +1299,8 @@ public class WcuViewport : Control
                         var nodes = ViewportPicking.FindNodesInRectangle(
                             mesh, triangles, _originX, _originY, _originZ,
                             in viewProj, _renderer.Width, _renderer.Height,
-                            new Vector2(x0, y0), new Vector2(x1, y1));
+                            new Vector2(x0, y0), new Vector2(x1, y1),
+                            _lastEffectiveDeformationScale);
                         Selection.AddNodes(mesh, nodes);
                         break;
                 }
@@ -1301,6 +1472,7 @@ public class WcuViewport : Control
         }
 
         _gpuMeshes.Clear();
+        _displacementDirtyMeshes.Clear();
         _selectionGpu.Clear();
         _renderItems.Clear();
         _visibleGpus.Clear();

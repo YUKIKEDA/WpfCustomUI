@@ -28,6 +28,7 @@ namespace WpfCustomUI.Gallery
             ("Docking", () => new DockingPage()),
             ("Charts", () => new ChartsPage()),
             ("3D Viewport", () => new Viewport3DPage()),
+            ("3D Deformation", () => new ViewportDeformationPage()),
         ];
 
         public MainWindow()

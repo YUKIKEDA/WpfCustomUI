@@ -22,6 +22,7 @@ public sealed class ViewportMesh : INotifyPropertyChanged
     private double[] _positions = [];
     private int[] _triangleIndices = [];
     private double[]? _scalarValues;
+    private double[]? _displacements;
     private Color _color = Color.FromRgb(0xB0, 0xB4, 0xBC);
     private bool _isVisible = true;
     private bool _showEdges = true;
@@ -58,6 +59,19 @@ public sealed class ViewportMesh : INotifyPropertyChanged
     {
         get => _scalarValues;
         set => SetField(ref _scalarValues, value);
+    }
+
+    /// <summary>
+    /// 節点変位ベクトル(変形表示用、spec 6.18)。ux0,uy0,uz0, ux1,... の平坦な配列(長さ 3×節点数)。
+    /// null または長さ不正なら変位ゼロとして扱う。表示上の変形量は
+    /// <see cref="WcuViewport.DeformationScale"/> との積で決まる(GPU 側で適用)。
+    /// 差し替えはジオメトリ再構築でなく変位バッファの部分更新で処理されるため、
+    /// フレーム再生(過渡応答)で毎フレーム差し替えても効率的に動く。
+    /// </summary>
+    public double[]? Displacements
+    {
+        get => _displacements;
+        set => SetField(ref _displacements, value);
     }
 
     /// <summary>単色表示時のパーツ色(コンター無効時・スカラーなし時に使用)。</summary>

@@ -1,0 +1,93 @@
+<UserControl x:Class="WpfCustomUI.Gallery.Pages.ViewportDeformationPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ui="https://schemas.wpfcustomui.dev/xaml"
+             mc:Ignorable="d">
+    <UserControl.Resources>
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Secondary}" />
+            <Setter Property="FontSize" Value="{StaticResource Wcu.FontSize.S}" />
+            <Setter Property="Margin" Value="0,2,0,0" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+    </UserControl.Resources>
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel MaxWidth="860" HorizontalAlignment="Left">
+
+            <TextBlock Text="3D Deformation (変形表示+アニメーション)" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,4" />
+            <TextBlock Style="{StaticResource Hint}"
+                       Text="ViewportMesh.Displacements(節点変位ベクトル)× DeformationScale を GPU 頂点シェーダで適用する変形表示。デモは片持ち梁(板)の曲げ固有モード(Euler-Bernoulli の解析解)。スケール変更・振動アニメーション・非変形ワイヤフレーム重畳・PlaybackBar による過渡応答再生(毎フレーム変位配列を差し替え)を試せる。" />
+
+            <!-- モード選択+スケール -->
+            <WrapPanel Margin="0,12,0,4" ItemHeight="28">
+                <TextBlock Text="モード:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <ComboBox x:Name="ModeCombo" MinWidth="130" VerticalAlignment="Center"
+                          AutomationProperties.AutomationId="ModeCombo"
+                          SelectionChanged="OnModeChanged">
+                    <ComboBoxItem Content="1次曲げ" IsSelected="True" />
+                    <ComboBoxItem Content="2次曲げ" />
+                    <ComboBoxItem Content="3次曲げ" />
+                </ComboBox>
+                <TextBlock Text="変形スケール:" VerticalAlignment="Center" Margin="20,0,8,0" />
+                <Slider x:Name="ScaleSlider" Width="180" VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="DeformScaleSlider"
+                        Minimum="0" Maximum="30" Value="5" />
+                <TextBlock x:Name="ScaleText" VerticalAlignment="Center" Margin="8,0,0,0"
+                           AutomationProperties.AutomationId="ScaleText"
+                           Text="{Binding Value, ElementName=ScaleSlider, StringFormat=×{0:0.0}}" />
+                <Button Content="自動スケール" Click="OnAutoScaleClick" Margin="16,0,0,0"
+                        AutomationProperties.AutomationId="AutoScaleButton" />
+            </WrapPanel>
+
+            <!-- 表示オプション -->
+            <WrapPanel Margin="0,0,0,8" ItemHeight="28">
+                <ui:ToggleSwitch x:Name="AnimToggle" Content="振動アニメーション"
+                                 AutomationProperties.AutomationId="AnimToggle" />
+                <ui:ToggleSwitch x:Name="GhostToggle" Content="非変形ワイヤフレーム" Margin="20,0,0,0"
+                                 AutomationProperties.AutomationId="UndeformedToggle" />
+                <ui:ToggleSwitch x:Name="ContourToggle" Content="コンター" IsChecked="True" Margin="20,0,0,0" />
+                <Button Content="Fit" Click="OnFitClick" MinWidth="60" Margin="20,0,0,0" />
+            </WrapPanel>
+
+            <!-- ビューポート + 凡例 -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <ui:WcuViewport x:Name="Viewport"
+                                Grid.Column="0"
+                                Height="420"
+                                DeformationScale="{Binding Value, ElementName=ScaleSlider}"
+                                IsDeformationAnimated="{Binding IsChecked, ElementName=AnimToggle}"
+                                ShowUndeformedWireframe="{Binding IsChecked, ElementName=GhostToggle}"
+                                ShowContours="{Binding IsChecked, ElementName=ContourToggle}" />
+
+                <ui:ColorMapLegend x:Name="Legend"
+                                   Grid.Column="1"
+                                   Height="280"
+                                   Margin="16,0,0,0"
+                                   VerticalAlignment="Center"
+                                   Title="|u| [mm]" />
+            </Grid>
+            <TextBlock x:Name="RendererInfo" Style="{StaticResource Hint}" />
+
+            <!-- 過渡応答再生(spec 6.18.3: フレーム列再生はアプリ責務) -->
+            <TextBlock Text="過渡応答再生(先端初期変位からの減衰自由振動)" FontWeight="SemiBold" Margin="0,16,0,4" />
+            <ui:PlaybackBar x:Name="Playback"
+                            AutomationProperties.AutomationId="PlaybackBar"
+                            FramesPerSecond="30"
+                            CurrentFrameChanged="OnPlaybackFrameChanged" />
+
+            <TextBlock Style="{StaticResource Hint}" Margin="0,12,0,0"
+                       Text="変形の適用は GPU 頂点シェーダ(pos + disp × scale)。変位は独立した Dynamic 頂点バッファ(slot 1)に置かれ、Displacements 差し替え時はそこだけ部分更新されるため、過渡再生で毎フレーム差し替えても軽い。法線は非変形のまま(小変形前提)。ピッキングも変形後の見た目どおりにヒットする。" />
+            <TextBlock Style="{StaticResource Hint}" Margin="0,6,0,0"
+                       Text="振動アニメーションは DeformationScale × sin(2πt/T) の内蔵モード(IsDeformationAnimated)。フレーム列の再生は PlaybackBar の CurrentFrameChanged で Displacements / ScalarValues を差し替えるアプリ責務(このページの実装がその例)。自動スケールは GetSuggestedDeformationScale()(最大変位がモデル対角長の 5% に見える倍率)を適用する。" />
+
+            <Border Height="24" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

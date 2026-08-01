@@ -13,8 +13,8 @@ namespace WpfCustomUI.Viewport3D.Rendering;
 /// </summary>
 internal sealed unsafe class GpuSelectionMesh : IDisposable
 {
-    /// <summary>ポイント頂点レイアウト: position(12B) + corner(8B) = 20B。</summary>
-    public const uint PointVertexStride = 20;
+    /// <summary>ポイント頂点レイアウト: position(12B) + corner(8B) + displacement(12B) = 32B。</summary>
+    public const uint PointVertexStride = 32;
 
     private ComPtr<ID3D11Buffer> _faceIndexBuffer;
     private ComPtr<ID3D11Buffer> _nodeVertexBuffer;
@@ -58,9 +58,11 @@ internal sealed unsafe class GpuSelectionMesh : IDisposable
             faceIndices.Add(triangles[face * 3 + 2]);
         }
 
-        // 選択節点クワッド
+        // 選択節点クワッド(変位を頂点属性として持たせ、変形表示に追従させる。
+        // Displacements 差し替え時は WcuViewport 側が選択バッファごと再構築する)
+        var displacements = ViewportDeformation.ToDisplacementArray(source.Displacements, vertexCount);
         var validNodes = selectedNodes.Where(n => n >= 0 && n < vertexCount).ToList();
-        var nodeVertices = new float[validNodes.Count * 6 * 5];
+        var nodeVertices = new float[validNodes.Count * 6 * 8];
         ReadOnlySpan<(float X, float Y)> corners =
         [
             (-0.5f, -0.5f), (0.5f, -0.5f), (0.5f, 0.5f),
@@ -76,12 +78,15 @@ internal sealed unsafe class GpuSelectionMesh : IDisposable
 
             for (var c = 0; c < 6; c++)
             {
-                var dst = (i * 6 + c) * 5;
+                var dst = (i * 6 + c) * 8;
                 nodeVertices[dst] = px;
                 nodeVertices[dst + 1] = py;
                 nodeVertices[dst + 2] = pz;
                 nodeVertices[dst + 3] = corners[c].X;
                 nodeVertices[dst + 4] = corners[c].Y;
+                nodeVertices[dst + 5] = displacements[node * 3];
+                nodeVertices[dst + 6] = displacements[node * 3 + 1];
+                nodeVertices[dst + 7] = displacements[node * 3 + 2];
             }
         }
 

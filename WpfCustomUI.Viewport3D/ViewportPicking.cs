@@ -39,7 +39,7 @@ internal static class ViewportPicking
         ViewportMesh mesh, int triangleIndex,
         double originX, double originY, double originZ,
         in Matrix4x4 viewProj, double pixelWidth, double pixelHeight,
-        Vector2 cursorPixel)
+        Vector2 cursorPixel, double deformationScale = 0.0)
     {
         var triangles = mesh.TriangleIndices;
         var positions = mesh.Positions;
@@ -59,7 +59,8 @@ internal static class ViewportPicking
                 continue;
             }
 
-            var local = GetLocalPosition(positions, node, originX, originY, originZ);
+            var local = GetLocalPosition(
+                positions, mesh.Displacements, deformationScale, node, originX, originY, originZ);
             var pixel = ProjectToPixel(local, in viewProj, pixelWidth, pixelHeight);
             if (pixel is null)
             {
@@ -85,7 +86,7 @@ internal static class ViewportPicking
         ViewportMesh mesh, IReadOnlyCollection<int> hitTriangles,
         double originX, double originY, double originZ,
         in Matrix4x4 viewProj, double pixelWidth, double pixelHeight,
-        Vector2 rectMin, Vector2 rectMax)
+        Vector2 rectMin, Vector2 rectMax, double deformationScale = 0.0)
     {
         var result = new HashSet<int>();
         var triangles = mesh.TriangleIndices;
@@ -112,7 +113,8 @@ internal static class ViewportPicking
                 continue;
             }
 
-            var local = GetLocalPosition(positions, node, originX, originY, originZ);
+            var local = GetLocalPosition(
+                positions, mesh.Displacements, deformationScale, node, originX, originY, originZ);
             var pixel = ProjectToPixel(local, in viewProj, pixelWidth, pixelHeight);
             if (pixel is null)
             {
@@ -129,9 +131,25 @@ internal static class ViewportPicking
         return result;
     }
 
+    /// <summary>
+    /// 再センタリング+変形適用後のローカル座標。GPU 頂点シェーダ(pos + disp × scale)と
+    /// 同じ式にすることで、変形表示中の節点ピックが画面表示と一致する(spec 6.18.2)。
+    /// </summary>
     private static Vector3 GetLocalPosition(
-        double[] positions, int node, double originX, double originY, double originZ) => new(
-        (float)(positions[node * 3] - originX),
-        (float)(positions[node * 3 + 1] - originY),
-        (float)(positions[node * 3 + 2] - originZ));
+        double[] positions, double[]? displacements, double deformationScale,
+        int node, double originX, double originY, double originZ)
+    {
+        double dx = 0.0, dy = 0.0, dz = 0.0;
+        if (deformationScale != 0.0 && displacements is not null && node * 3 + 2 < displacements.Length)
+        {
+            dx = displacements[node * 3] * deformationScale;
+            dy = displacements[node * 3 + 1] * deformationScale;
+            dz = displacements[node * 3 + 2] * deformationScale;
+        }
+
+        return new(
+            (float)(positions[node * 3] - originX + dx),
+            (float)(positions[node * 3 + 1] - originY + dy),
+            (float)(positions[node * 3 + 2] - originZ + dz));
+    }
 }

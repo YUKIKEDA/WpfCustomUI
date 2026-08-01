@@ -21,6 +21,7 @@ internal static class HlslSource
             float4 BelowColor;
             float4 AboveColor;
             float4 ViewportInfo;   // xy=ビューポートのピクセルサイズ, z=ポイント直径(px)
+            float4 DeformParams;   // x=変形スケール(振動アニメ係数込み)
         };
         """;
 
@@ -35,6 +36,7 @@ internal static class HlslSource
             float3 pos    : POSITION;
             float3 normal : NORMAL;
             float  scalar : TEXCOORD0;
+            float3 disp   : TEXCOORD1;
         };
 
         struct PSIn
@@ -47,7 +49,10 @@ internal static class HlslSource
         PSIn VSMain(VSIn v)
         {
             PSIn o;
-            o.pos = mul(float4(v.pos, 1.0), ViewProj);
+            // 変形は頂点シェーダで適用(spec 6.18.2)。法線は非変形のまま
+            // (小変形前提の CAE 表示では十分で、陰影のちらつきも避けられる)
+            float3 pos = v.pos + v.disp * DeformParams.x;
+            o.pos = mul(float4(pos, 1.0), ViewProj);
             o.normal = v.normal;
             o.scalar = v.scalar;
             return o;
@@ -101,12 +106,14 @@ internal static class HlslSource
     /// <summary>
     /// エッジ(ワイヤフレーム)重畳用ラインシェーダ。
     /// Z ファイティング回避のため NDC 深度をわずかに手前へずらす。
+    /// DeformParams.x=0 で描けば非変形ワイヤフレーム重畳になる(spec 6.18.4)。
     /// </summary>
     public const string Line = Constants + """
 
         struct VSIn
         {
-            float3 pos : POSITION;
+            float3 pos  : POSITION;
+            float3 disp : TEXCOORD1;
         };
 
         struct PSIn
@@ -117,7 +124,8 @@ internal static class HlslSource
         PSIn VSMain(VSIn v)
         {
             PSIn o;
-            o.pos = mul(float4(v.pos, 1.0), ViewProj);
+            float3 pos = v.pos + v.disp * DeformParams.x;
+            o.pos = mul(float4(pos, 1.0), ViewProj);
             o.pos.z -= 0.0005 * o.pos.w;
             return o;
         }
@@ -136,7 +144,8 @@ internal static class HlslSource
 
         struct VSIn
         {
-            float3 pos : POSITION;
+            float3 pos  : POSITION;
+            float3 disp : TEXCOORD1;
         };
 
         struct PSIn
@@ -147,7 +156,9 @@ internal static class HlslSource
         PSIn VSMain(VSIn v)
         {
             PSIn o;
-            o.pos = mul(float4(v.pos, 1.0), ViewProj);
+            // 表示と同じ変形を適用し、変形後の見た目どおりにピックできるようにする
+            float3 pos = v.pos + v.disp * DeformParams.x;
+            o.pos = mul(float4(pos, 1.0), ViewProj);
             return o;
         }
 
@@ -167,6 +178,7 @@ internal static class HlslSource
         {
             float3 pos    : POSITION;
             float2 corner : TEXCOORD0;
+            float3 disp   : TEXCOORD1;
         };
 
         struct PSIn
@@ -178,7 +190,8 @@ internal static class HlslSource
         PSIn VSMain(VSIn v)
         {
             PSIn o;
-            float4 clip = mul(float4(v.pos, 1.0), ViewProj);
+            float3 pos = v.pos + v.disp * DeformParams.x;
+            float4 clip = mul(float4(pos, 1.0), ViewProj);
             clip.z -= 0.001 * clip.w; // 面の上に確実に見えるよう手前へ
             clip.xy += v.corner * ViewportInfo.z * (2.0 / ViewportInfo.xy) * clip.w;
             o.pos = clip;
