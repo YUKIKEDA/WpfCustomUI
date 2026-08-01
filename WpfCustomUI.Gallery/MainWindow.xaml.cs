@@ -21,6 +21,7 @@ namespace WpfCustomUI.Gallery
             ("Shell", () => new ShellPage()),
             ("Windows & Dialogs", () => new WindowsPage()),
             ("DataGrid", () => new DataGridPage()),
+            ("More Controls", () => new MoreControlsPage()),
         ];
 
         public MainWindow()

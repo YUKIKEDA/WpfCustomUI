@@ -23,5 +23,8 @@
         <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/ToastHost.xaml" />
         <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/BusyOverlay.xaml" />
         <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/DataGrid.xaml" />
+        <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/ProgressRing.xaml" />
+        <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/ToggleSwitch.xaml" />
+        <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/InfoBar.xaml" />
     </ResourceDictionary.MergedDictionaries>
 </ResourceDictionary>

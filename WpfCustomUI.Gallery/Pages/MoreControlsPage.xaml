@@ -1,0 +1,173 @@
+<UserControl x:Class="WpfCustomUI.Gallery.Pages.MoreControlsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ui="https://schemas.wpfcustomui.dev/xaml"
+             mc:Ignorable="d">
+    <UserControl.Resources>
+        <Style x:Key="SectionHeader" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="{StaticResource Wcu.FontSize.L}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,16,0,8" />
+        </Style>
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Secondary}" />
+            <Setter Property="FontSize" Value="{StaticResource Wcu.FontSize.S}" />
+            <Setter Property="Margin" Value="0,2,0,0" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+    </UserControl.Resources>
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel MaxWidth="760" HorizontalAlignment="Left">
+
+            <TextBlock Text="More Controls" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,4" />
+
+            <TextBlock Text="InfoBar(インライン通知)" Style="{StaticResource SectionHeader}" />
+            <StackPanel>
+                <ui:InfoBar x:Name="InfoBarInfo"
+                            Severity="Info"
+                            Title="情報"
+                            Message="メッシュは最新です。" Margin="0,0,0,6" />
+                <ui:InfoBar x:Name="InfoBarSuccess"
+                            Severity="Success"
+                            Title="完了"
+                            Message="解析が正常に終了しました(経過時間 00:12:34)。" Margin="0,0,0,6" />
+                <ui:InfoBar x:Name="InfoBarWarning"
+                            Severity="Warning"
+                            Message="アスペクト比が 10 を超える要素が 24 個あります。閉じるボタンなし(IsClosable=False)。"
+                            IsClosable="False" Margin="0,0,0,6" />
+                <ui:InfoBar x:Name="InfoBarError"
+                            Severity="Error"
+                            Title="エラー"
+                            Message="ライセンスサーバーに接続できませんでした。"
+                            Closed="InfoBar_Closed"
+                            Margin="0,0,0,6">
+                    <ui:InfoBar.ActionContent>
+                        <Button Content="再試行" Click="Retry_Click" />
+                    </ui:InfoBar.ActionContent>
+                </ui:InfoBar>
+                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                    <Button x:Name="ReopenButton" Content="すべて再表示" Click="Reopen_Click" />
+                    <TextBlock x:Name="InfoBarStatus" Margin="12,0,0,0" VerticalAlignment="Center"
+                               Style="{StaticResource Hint}" />
+                </StackPanel>
+            </StackPanel>
+            <TextBlock Style="{StaticResource Hint}"
+                       Text="ユーザーが閉じるまで残る通知。IsOpen は TwoWay 既定なので VM のフラグにそのままバインドできる。自動で消える一時通知は Toast を使う。" />
+
+            <TextBlock Text="ToggleSwitch" Style="{StaticResource SectionHeader}" />
+            <StackPanel>
+                <ui:ToggleSwitch x:Name="AutoSaveSwitch" Content="自動保存" IsChecked="True" Margin="0,0,0,6" />
+                <ui:ToggleSwitch Content="解析中に結果をライブ更新" Margin="0,0,0,6" />
+                <ui:ToggleSwitch Content="無効状態" IsEnabled="False" IsChecked="True" Margin="0,0,0,6" />
+                <TextBlock Style="{StaticResource Hint}"
+                           Text="{Binding ElementName=AutoSaveSwitch, Path=IsChecked, StringFormat='自動保存 IsChecked = {0}'}" />
+            </StackPanel>
+            <TextBlock Style="{StaticResource Hint}"
+                       Text="ToggleButton 派生なので IsChecked / Command がそのまま使える。CheckBox は複数選択、ToggleSwitch は即時に効く ON/OFF 設定に使い分ける。" />
+
+            <TextBlock Text="ProgressRing" Style="{StaticResource SectionHeader}" />
+            <StackPanel Orientation="Horizontal">
+                <ui:ProgressRing x:Name="DemoRing" VerticalAlignment="Center" />
+                <ui:ProgressRing Width="16" Height="16" Margin="16,0,0,0" VerticalAlignment="Center"
+                                 IsActive="{Binding ElementName=RingSwitch, Path=IsChecked}" />
+                <ui:ProgressRing Width="48" Height="48" Margin="16,0,0,0" VerticalAlignment="Center"
+                                 Foreground="{DynamicResource Wcu.Brush.Warning}"
+                                 IsActive="{Binding ElementName=RingSwitch, Path=IsChecked}" />
+                <ui:ToggleSwitch x:Name="RingSwitch" Content="IsActive" IsChecked="True"
+                                 Margin="24,0,0,0" VerticalAlignment="Center" />
+            </StackPanel>
+            <TextBlock Style="{StaticResource Hint}"
+                       Text="サイズは Width/Height、色は Foreground で指定。BusyOverlay の内蔵スピナーも同じコントロール。進捗率を出すなら ProgressBar / ProgressDisplay を使う。" />
+
+            <TextBlock Text="TreeView(標準ツリー)" Style="{StaticResource SectionHeader}" />
+            <TreeView Height="220" Width="320" HorizontalAlignment="Left">
+                <TreeViewItem Header="Assembly-1" IsExpanded="True">
+                    <TreeViewItem Header="Part: ブラケット" IsExpanded="True">
+                        <TreeViewItem Header="ソリッドボディ" />
+                        <TreeViewItem Header="メッシュ (24,310 要素)" />
+                    </TreeViewItem>
+                    <TreeViewItem Header="Part: シャフト">
+                        <TreeViewItem Header="ソリッドボディ" />
+                        <TreeViewItem Header="メッシュ (8,102 要素)" />
+                    </TreeViewItem>
+                    <TreeViewItem Header="境界条件" IsExpanded="True">
+                        <TreeViewItem Header="固定拘束 (Face 3)" />
+                        <TreeViewItem Header="荷重 500 N (Face 12)" />
+                    </TreeViewItem>
+                    <TreeViewItem Header="接触定義" />
+                </TreeViewItem>
+            </TreeView>
+            <TextBlock Style="{StaticResource Hint}"
+                       Text="小規模な階層 UI(設定ダイアログ等)向けの標準 TreeView。数万ノードのモデルツリーには仮想化+チェック/可視切替つきの ModelTree を使う。" />
+
+            <TextBlock Text="ListView + GridView(読み取り専用の列表示)" Style="{StaticResource SectionHeader}" />
+            <ListView x:Name="MaterialList" Height="180" Width="560" HorizontalAlignment="Left">
+                <ListView.View>
+                    <GridView>
+                        <GridViewColumn Header="材料名" Width="160"
+                                        DisplayMemberBinding="{Binding Name}" />
+                        <GridViewColumn Header="ヤング率 [GPa]" Width="120"
+                                        DisplayMemberBinding="{Binding YoungsModulus}" />
+                        <GridViewColumn Header="ポアソン比" Width="100"
+                                        DisplayMemberBinding="{Binding PoissonsRatio}" />
+                        <GridViewColumn Header="密度 [kg/m³]" Width="120"
+                                        DisplayMemberBinding="{Binding Density}" />
+                    </GridView>
+                </ListView.View>
+            </ListView>
+            <TextBlock Style="{StaticResource Hint}"
+                       Text="ヘッダーはドラッグで並べ替え・境界ドラッグで列幅変更が可能。ソートや編集が必要な場合は DataGrid を使う。" />
+
+            <TextBlock Text="PasswordBox / RichTextBox" Style="{StaticResource SectionHeader}" />
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="150" />
+                    <ColumnDefinition Width="360" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBlock Text="ライセンスキー" VerticalAlignment="Center" />
+                <PasswordBox Grid.Column="1" Margin="0,2" Password="secret123" />
+                <TextBlock Grid.Row="1" Text="解析メモ" VerticalAlignment="Top" Margin="0,8,0,0" />
+                <RichTextBox Grid.Row="1" Grid.Column="1" Margin="0,8,0,0" Height="90">
+                    <FlowDocument>
+                        <Paragraph>
+                            <Bold>Rev.3</Bold> のメッシュで再解析。応力集中部の要素サイズを
+                            <Italic>0.5 mm</Italic> に変更した。
+                        </Paragraph>
+                        <Paragraph>次回: 接触剛性のスタディを追加する。</Paragraph>
+                    </FlowDocument>
+                </RichTextBox>
+            </Grid>
+            <TextBlock Style="{StaticResource Hint}"
+                       Text="どちらも TextBox と同じ見た目(フォーカスで青枠)。RichTextBox は複数行前提で上詰め+縦スクロール。" />
+
+            <TextBlock Text="Label / Hyperlink" Style="{StaticResource SectionHeader}" />
+            <StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                    <Label Content="ソルバー(_S):" Target="{Binding ElementName=SolverCombo}"
+                           VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <ComboBox x:Name="SolverCombo" Width="160" SelectedIndex="0">
+                        <ComboBoxItem Content="直接法 (MUMPS)" />
+                        <ComboBoxItem Content="反復法 (PCG)" />
+                    </ComboBox>
+                </StackPanel>
+                <TextBlock>
+                    詳細は
+                    <Hyperlink Click="HelpLink_Click">ソルバー設定のヘルプ</Hyperlink>
+                    を参照。無効なリンクは
+                    <Hyperlink IsEnabled="False">このように表示される</Hyperlink>。
+                </TextBlock>
+                <TextBlock x:Name="LinkStatus" Style="{StaticResource Hint}" />
+            </StackPanel>
+            <TextBlock Style="{StaticResource Hint}"
+                       Text="Label は既定余白 5px を除去済み(Padding=0)。Target でアクセスキー(Alt+S)を入力先に転送できる。Hyperlink はホバーで下線。" />
+
+            <Border Height="24" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

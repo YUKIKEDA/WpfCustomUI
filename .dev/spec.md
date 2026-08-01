@@ -212,6 +212,42 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 
 - 新規入力系に対応する派生を同フェーズで追加: `PathPropertyItem` / `ColorPropertyItem` / `Vector3PropertyItem`(派生クラス+DataTemplate 各1つの薄いラッパー)
 
+## 6.10 第4弾スコープ — テーマ網羅+小物
+
+(2026-08-01 の設計インタビューで決定)
+
+- **狙い**: 「どの標準コントロールを置いてもダークテーマが崩れない」保証を実用範囲で完成させ、実需の高い小物3種を追加する
+- **チャートは自作しない(方針決定)**: 収束モニタ等のチャート系は、実績ある外部ライブラリ(ScottPlot / OxyPlot 等を着手時に評価・選定)をベースに、テーマ適合アダプタ+CAE 向け複合コントロールを被せる構成とし、**別アセンブリ `WpfCustomUI.Charts`** として将来フェーズで実施(本体のゼロ依存ポリシーを維持)
+- ドキュメントタブ / Wizard は引き続き見送り(ドッキング UI 検討と同時に設計する方が手戻りがない)
+
+### 6.10.1 テーマ網羅(未スタイル標準コントロールの穴埋め)
+
+- **TreeView / TreeViewItem**: 展開シェブロン+選択/ホバー。ModelTree とビジュアルを揃える(インデントガイド線等の拡張はなし。大規模・複数選択ツリーは引き続き ModelTree の領分)
+- **ListView + GridView**: 列ヘッダーのホバー/押下スタイル。ソート矢印等の基盤は持たない(ソート付き表は DataGrid を使う、とギャラリーで案内)
+  - 実装メモ: アプリレベルの暗黙 `ListViewItem` スタイルはテーマレベルの `GridViewItemContainerStyleKey` より優先されるため、暗黙スタイル自身が `View` の有無でテンプレート(GridViewRowPresenter ⇔ ContentPresenter)を切り替える。ヘッダー行の固定・横スクロール同期は `GridViewScrollViewerStyleKey` で提供
+- **PasswordBox**: TextBox と同一の見た目
+- **RichTextBox**: TextBox スタイルを TextBoxBase 共通に再編して適用
+- **Hyperlink**: アクセント色、ホバーで下線+Hover 色
+- **Label**: 既定 Padding 5 → 0 の軽量スタイル(高密度基準に整合)
+- **未対応リスト(実需が出てから)**: DatePicker / Calendar(Calendar テンプレートが最大級の工数で、CAE での遭遇率と釣り合わないため)
+
+### 6.10.2 InfoBar
+
+- パネル上部等に置く**常駐型のインライン警告バナー**(「メッシュが古い」「単位系が未設定」等)。一過性の ToastHost と役割を分担
+- **WinUI InfoBar 準拠の縮小版 API**: `Severity`(Info / Success / Warning / Error)、`Title`、`Message`、`IsOpen`(two-way 既定)、`IsClosable`、`ActionContent`(アクションボタン等の差し込みスロット)。閉じるボタンで `IsOpen=false` になり `Closed` イベントが発火
+- **ビジュアル**: 背景は `Surface.Elevated` のまま、左端の色帯+アイコンで重要度を示す(無彩色 UI の方針を維持し、色はアクセントに限定)
+- 凝ったレイアウトが必要な場合は `Message` を空にして `ActionContent` に任意 UI を入れる
+
+### 6.10.3 ToggleSwitch
+
+- ToggleButton 派生。トラック約 32×16 で `Wcu.ControlHeight`(24px)内に収まる高密度サイズ
+- ラベルは右側 `Content`。On/Off 文字列は内蔵しない(文字列方針と整合)。三状態は非対応
+
+### 6.10.4 ProgressRing
+
+- BusyOverlay 内蔵スピナーの切り出しリファクタ。`IsActive` のみ公開、サイズは Width / Height(Viewbox スケール)、色は `Foreground` で指定
+- BusyOverlay は本コントロールを内部利用する形に変更
+
 ## 7. テスト方針
 
 - **UI に依存しないロジックのみ** xUnit でテストする:
@@ -235,3 +271,5 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 | **Phase 7 — ウィンドウ系**                       | WcuWindow(クローム) / WcuDialogWindow / WcuMessageBox / ToastHost / BusyOverlay                                                                      | ✅ 完了 (2026-08-01) |
 | **Phase 8 — DataGrid**                           | 標準 DataGrid のフルスタイル化(最大工数のため独立フェーズ)                                                                                           | ✅ 完了 (2026-08-01) |
 | **Phase 9 — 入力・ツールバー小物**               | DropDownButton / SplitButton / PathBox / RangeSlider / ColorPicker(ColorEditor) / Vector3Box + PropertyGrid 連携(Path/Color/Vector3 PropertyItem)    | ✅ 完了 (2026-08-01) |
+| **Phase 10 — テーマ網羅+小物**                   | TreeView / ListView(GridView) / PasswordBox / RichTextBox / Hyperlink / Label のスタイル穴埋め + InfoBar / ToggleSwitch / ProgressRing               | ✅ 完了 (2026-08-01) |
+| **(将来)Charts**                                 | 外部ライブラリ(ScottPlot / OxyPlot 等を選定)ベースの別アセンブリ `WpfCustomUI.Charts`。収束モニタ等の CAE 向け複合コントロールを提供                 | 構想                 |
