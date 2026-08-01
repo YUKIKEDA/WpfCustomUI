@@ -37,6 +37,12 @@ public enum ViewportPickMode
 
     /// <summary>節点(頂点)単位の選択。</summary>
     Node,
+
+    /// <summary>
+    /// プローブ(spec 6.20)。クリック位置の値を補間して <see cref="WcuViewport.ProbePicked"/> を発火し、
+    /// 既定では注釈ラベルを自動追加する。矩形選択は無効(クリックのみ)。
+    /// </summary>
+    Probe,
 }
 
 /// <summary>標準視点(spec 6.17.5)。Z-up では Front = -Y 側から見る CAD 慣例に従う。</summary>

@@ -49,6 +49,18 @@ public static class ViewportSection
     }
 
     /// <summary>
+    /// ローカル座標の点がクリップ平面で切り取られる側にあるか(spec 6.20.4)。
+    /// GPU の SV_ClipDistance と同じ式(dot(p, xyz) + w &lt; 0 でクリップ)なので、
+    /// 注釈の自動非表示が画面のクリップ表示と一致する。
+    /// <see cref="DisabledClip"/> では常に false。
+    /// </summary>
+    public static bool IsClipped(Vector3 localPoint, Vector4 clipCoefficients) =>
+        localPoint.X * clipCoefficients.X
+        + localPoint.Y * clipCoefficients.Y
+        + localPoint.Z * clipCoefficients.Z
+        + clipCoefficients.W < 0.0f;
+
+    /// <summary>
     /// 平面インジケータ(半透明クワッド+輪郭線)の頂点列を作る(spec 6.19.4)。
     /// <para>
     /// 戻り値は 14 頂点 × 6 float(position + displacement ゼロ埋め、ライン系シェーダの

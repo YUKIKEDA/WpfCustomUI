@@ -30,6 +30,7 @@ namespace WpfCustomUI.Gallery
             ("3D Viewport", () => new Viewport3DPage()),
             ("3D Deformation", () => new ViewportDeformationPage()),
             ("3D Section", () => new ViewportSectionPage()),
+            ("3D Probe", () => new ViewportProbePage()),
         ];
 
         public MainWindow()

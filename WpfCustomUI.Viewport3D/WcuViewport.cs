@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Numerics;
@@ -35,16 +36,19 @@ namespace WpfCustomUI.Viewport3D;
 /// </summary>
 [TemplatePart(Name = PartImage, Type = typeof(Image))]
 [TemplatePart(Name = PartTriadCanvas, Type = typeof(Canvas))]
+[TemplatePart(Name = PartAnnotationCanvas, Type = typeof(Canvas))]
 [TemplatePart(Name = PartViewCubeCanvas, Type = typeof(Canvas))]
 public class WcuViewport : Control
 {
     private const string PartImage = "PART_Image";
     private const string PartTriadCanvas = "PART_TriadCanvas";
+    private const string PartAnnotationCanvas = "PART_AnnotationCanvas";
     private const string PartViewCubeCanvas = "PART_ViewCubeCanvas";
     private const double TriadArmLength = 36.0;
     private const double TriadMargin = 56.0;
     private const double RubberBandThresholdDip = 4.0;
     private const double ViewAnimationDurationMs = 150.0;
+    private const double AnnotationLeaderLengthDip = 18.0;
 
     public static readonly DependencyProperty MeshSourceProperty =
         DependencyProperty.Register(
@@ -178,6 +182,11 @@ public class WcuViewport : Control
     private readonly TextBlock[] _triadLabels = new TextBlock[3];
     private Rectangle? _rubberBand;
 
+    // 注釈オーバーレイ(spec 6.20.4)
+    private readonly List<AnnotationVisual> _annotationVisuals = [];
+    private readonly List<ViewportAnnotation> _hookedAnnotations = [];
+    private Canvas? _annotationCanvas;
+
     static WcuViewport()
     {
         DefaultStyleKeyProperty.OverrideMetadata(
@@ -192,12 +201,36 @@ public class WcuViewport : Control
         Selection = new ViewportSelection();
         Selection.Changed += OnSelectionModelChanged;
 
+        Annotations = [];
+        Annotations.CollectionChanged += OnAnnotationsChanged;
+
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
 
     /// <summary>選択内容が変わったときに発火する(<see cref="Selection"/> の Changed の転送)。</summary>
     public event EventHandler? SelectionChanged;
+
+    /// <summary>
+    /// プローブ(<see cref="ViewportPickMode.Probe"/>)のクリックがメッシュにヒットしたときに発火する
+    /// (spec 6.20.2)。<see cref="ProbePickedEventArgs.Handled"/> を true にしなければ、
+    /// 既定書式(または <see cref="ProbeLabelFormatter"/>)のラベルで注釈が自動追加される。
+    /// 空クリック(背景)では発火しない。
+    /// </summary>
+    public event EventHandler<ProbePickedEventArgs>? ProbePicked;
+
+    /// <summary>
+    /// プローブ注釈の既定ラベル書式を差し替える(単位付き表示など)。null なら組込み書式
+    /// (スカラーありは「N{節点}: {値:G4}」、なしは節点番号+モデル座標)。
+    /// </summary>
+    public Func<ProbeResult, string>? ProbeLabelFormatter { get; set; }
+
+    /// <summary>
+    /// ビューポートに表示する注釈のコレクション(spec 6.20.3)。プローブが自動追加するほか、
+    /// アプリから直接追加・削除できる(全削除は Clear())。描画はコントロールが内蔵し、
+    /// 節点バインドの注釈は変形表示・断面カット・メッシュ可視状態に毎フレーム追従する。
+    /// </summary>
+    public ObservableCollection<ViewportAnnotation> Annotations { get; }
 
     /// <summary>表示するメッシュのコレクション(通常 ObservableCollection&lt;ViewportMesh&gt;)。</summary>
     public IEnumerable? MeshSource
@@ -491,8 +524,10 @@ public class WcuViewport : Control
         base.OnApplyTemplate();
         _image = GetTemplateChild(PartImage) as Image;
         _triadCanvas = GetTemplateChild(PartTriadCanvas) as Canvas;
+        _annotationCanvas = GetTemplateChild(PartAnnotationCanvas) as Canvas;
         _viewCubeCanvas = GetTemplateChild(PartViewCubeCanvas) as Canvas;
         SetupTriadOverlay();
+        RebuildAnnotationVisuals();
         SetupViewCube();
         InvalidateViewport();
     }
@@ -618,6 +653,7 @@ public class WcuViewport : Control
             }
 
             UpdateTriadOverlay();
+            UpdateAnnotationOverlay(in viewProj, pixelWidth, pixelHeight, dpi.DpiScaleX, clipPlane);
             _viewCube?.Update(Camera, ActualWidth, ActualHeight, ShowViewCube);
             _consecutiveFailures = 0;
         }
@@ -1138,7 +1174,9 @@ public class WcuViewport : Control
         if (_isPicking)
         {
             var position = e.GetPosition(this);
+            // プローブはクリックのみ(矩形選択なし、spec 6.20.2)
             if (!_isRubberBanding
+                && PickMode != ViewportPickMode.Probe
                 && (Math.Abs(position.X - _pickStart.X) > RubberBandThresholdDip
                     || Math.Abs(position.Y - _pickStart.Y) > RubberBandThresholdDip))
             {
@@ -1193,7 +1231,11 @@ public class WcuViewport : Control
             CancelPicking();
 
             var additive = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
-            if (wasRubberBanding)
+            if (PickMode == ViewportPickMode.Probe)
+            {
+                ProbeAtPoint(position);
+            }
+            else if (wasRubberBanding)
             {
                 SelectInRectangle(rubberBandStart, position, additive);
             }
@@ -1390,6 +1432,230 @@ public class WcuViewport : Control
         {
             Selection.EndUpdate();
         }
+    }
+
+    // ================= プローブ+注釈(spec 6.20) =================
+
+    /// <summary>
+    /// プローブ実行。GPU ID ピックで三角形を特定し、CPU のレイ交差+重心座標補間で
+    /// ヒット点と値を求めて <see cref="ProbePicked"/> を発火する。未処理なら注釈を自動追加。
+    /// 空クリック(背景)は何もしない(spec 6.20.2)。
+    /// </summary>
+    private void ProbeAtPoint(Point positionDip)
+    {
+        if (!TryGetPickContext(out var viewProj, out var dpiScale))
+        {
+            return;
+        }
+
+        var px = (int)(positionDip.X * dpiScale);
+        var py = (int)(positionDip.Y * dpiScale);
+        var hit = _renderer!.PickPixel(
+            _visibleGpus, in viewProj, px, py, _lastEffectiveDeformationScale, GetCurrentClipPlane());
+        if (hit is not { } h || h.MeshIndex >= _visibleSources.Count)
+        {
+            return;
+        }
+
+        var result = ViewportProbing.Probe(
+            _visibleSources[h.MeshIndex], h.TriangleIndex, new Vector2(px, py), in viewProj,
+            _renderer.Width, _renderer.Height, _originX, _originY, _originZ,
+            _lastEffectiveDeformationScale);
+        if (result is null)
+        {
+            return;
+        }
+
+        var args = new ProbePickedEventArgs(result);
+        ProbePicked?.Invoke(this, args);
+        if (args.Handled)
+        {
+            return;
+        }
+
+        Annotations.Add(new ViewportAnnotation
+        {
+            Mesh = result.Mesh,
+            NodeIndex = result.NodeIndex,
+            X = result.X,
+            Y = result.Y,
+            Z = result.Z,
+            Text = ProbeLabelFormatter?.Invoke(result) ?? FormatDefaultProbeLabel(result),
+            Tag = result,
+        });
+    }
+
+    /// <summary>組込みのプローブラベル書式(カルチャ非依存)。</summary>
+    internal static string FormatDefaultProbeLabel(ProbeResult result) => result.ScalarValue is { } value
+        ? FormattableString.Invariant($"N{result.NodeIndex}: {value:G4}")
+        : FormattableString.Invariant(
+            $"N{result.NodeIndex} ({result.X:G4}, {result.Y:G4}, {result.Z:G4})");
+
+    private void OnAnnotationsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        // Reset で旧要素が取れないため、フック済みリストで付け外しを管理する
+        foreach (var annotation in _hookedAnnotations)
+        {
+            annotation.PropertyChanged -= OnAnnotationItemChanged;
+        }
+
+        _hookedAnnotations.Clear();
+        foreach (var annotation in Annotations)
+        {
+            annotation.PropertyChanged += OnAnnotationItemChanged;
+            _hookedAnnotations.Add(annotation);
+        }
+
+        RebuildAnnotationVisuals();
+        InvalidateViewport();
+    }
+
+    private void OnAnnotationItemChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ViewportAnnotation.Text) && sender is ViewportAnnotation annotation)
+        {
+            _annotationVisuals.FirstOrDefault(v => v.Annotation == annotation)?.Label
+                .SetCurrentValue(TextBlock.TextProperty, annotation.Text);
+        }
+
+        InvalidateViewport();
+    }
+
+    /// <summary>注釈 1 件分のオーバーレイ要素(チップ+リーダーライン+アンカードット)。</summary>
+    private sealed record AnnotationVisual(
+        ViewportAnnotation Annotation, Border Chip, TextBlock Label, Line Leader, Ellipse Dot);
+
+    private void RebuildAnnotationVisuals()
+    {
+        if (_annotationCanvas is null)
+        {
+            return;
+        }
+
+        _annotationCanvas.Children.Clear();
+        _annotationVisuals.Clear();
+
+        foreach (var annotation in Annotations)
+        {
+            var label = new TextBlock
+            {
+                Text = annotation.Text,
+                FontSize = 11,
+                TextAlignment = TextAlignment.Left,
+            };
+            label.SetResourceReference(TextBlock.ForegroundProperty, "Wcu.Brush.Text.Primary");
+
+            var chip = new Border
+            {
+                Child = label,
+                CornerRadius = new CornerRadius(3),
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(6, 2, 6, 2),
+                Visibility = Visibility.Collapsed,
+            };
+            chip.SetResourceReference(Border.BackgroundProperty, "Wcu.Brush.Surface.Elevated");
+            chip.SetResourceReference(Border.BorderBrushProperty, "Wcu.Brush.Accent.Default");
+
+            var leader = new Line { StrokeThickness = 1.0, Visibility = Visibility.Collapsed };
+            leader.SetResourceReference(Shape.StrokeProperty, "Wcu.Brush.Accent.Default");
+
+            var dot = new Ellipse { Width = 5.0, Height = 5.0, Visibility = Visibility.Collapsed };
+            dot.SetResourceReference(Shape.FillProperty, "Wcu.Brush.Accent.Default");
+
+            _annotationCanvas.Children.Add(leader);
+            _annotationCanvas.Children.Add(dot);
+            _annotationCanvas.Children.Add(chip);
+            _annotationVisuals.Add(new AnnotationVisual(annotation, chip, label, leader, dot));
+        }
+    }
+
+    /// <summary>
+    /// 注釈オーバーレイの毎フレーム更新(spec 6.20.4)。節点バインドの注釈は変形適用後の
+    /// 節点位置に追従し、非表示メッシュ・断面クリップされた節点・画面外は自動で隠す。
+    /// </summary>
+    private void UpdateAnnotationOverlay(
+        in Matrix4x4 viewProj, double pixelWidth, double pixelHeight, double dpiScale,
+        Vector4 clipPlane)
+    {
+        if (_annotationCanvas is null || _annotationVisuals.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var visual in _annotationVisuals)
+        {
+            var anchor = GetAnnotationAnchor(visual.Annotation, clipPlane);
+            var pixel = anchor is { } a
+                ? ViewportPicking.ProjectToPixel(a, in viewProj, pixelWidth, pixelHeight)
+                : null;
+            var visible = pixel is { } p
+                && p.X >= 0.0f && p.X <= pixelWidth && p.Y >= 0.0f && p.Y <= pixelHeight;
+
+            var visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            visual.Chip.Visibility = visibility;
+            visual.Leader.Visibility = visibility;
+            visual.Dot.Visibility = visibility;
+            if (!visible)
+            {
+                continue;
+            }
+
+            var ax = pixel!.Value.X / dpiScale;
+            var ay = pixel.Value.Y / dpiScale;
+
+            visual.Dot.SetCurrentValue(Canvas.LeftProperty, ax - visual.Dot.Width / 2.0);
+            visual.Dot.SetCurrentValue(Canvas.TopProperty, ay - visual.Dot.Height / 2.0);
+
+            visual.Leader.X1 = ax;
+            visual.Leader.Y1 = ay;
+            visual.Leader.X2 = ax + AnnotationLeaderLengthDip;
+            visual.Leader.Y2 = ay - AnnotationLeaderLengthDip;
+
+            // チップの左下角がリーダーラインの先端に付くよう配置する
+            visual.Chip.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            visual.Chip.SetCurrentValue(Canvas.LeftProperty, ax + AnnotationLeaderLengthDip);
+            visual.Chip.SetCurrentValue(
+                Canvas.TopProperty,
+                ay - AnnotationLeaderLengthDip - visual.Chip.DesiredSize.Height);
+        }
+    }
+
+    /// <summary>
+    /// 注釈アンカーのローカル座標(再センタリング+変形適用後)。自動非表示条件に該当するときは null:
+    /// 節点バインドで対象メッシュが可視リストにない / 節点が範囲外 / 断面クリップされている。
+    /// 自由 3D 点アンカーは常に位置を返す(画面外判定は呼び出し側)。
+    /// </summary>
+    private Vector3? GetAnnotationAnchor(ViewportAnnotation annotation, Vector4 clipPlane)
+    {
+        if (annotation.Mesh is not { } mesh)
+        {
+            return new Vector3(
+                (float)(annotation.X - _originX),
+                (float)(annotation.Y - _originY),
+                (float)(annotation.Z - _originZ));
+        }
+
+        if (!_visibleSources.Contains(mesh))
+        {
+            return null;
+        }
+
+        var node = annotation.NodeIndex;
+        var positions = mesh.Positions;
+        if (node < 0 || node * 3 + 2 >= positions.Length)
+        {
+            return null;
+        }
+
+        var local = ViewportPicking.GetLocalPosition(
+            positions, mesh.Displacements, _lastEffectiveDeformationScale, node,
+            _originX, _originY, _originZ);
+        if (mesh.IsClippable && ViewportSection.IsClipped(local, clipPlane))
+        {
+            return null;
+        }
+
+        return local;
     }
 
     /// <summary>

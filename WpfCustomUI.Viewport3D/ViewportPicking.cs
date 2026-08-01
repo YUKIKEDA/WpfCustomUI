@@ -134,8 +134,9 @@ internal static class ViewportPicking
     /// <summary>
     /// 再センタリング+変形適用後のローカル座標。GPU 頂点シェーダ(pos + disp × scale)と
     /// 同じ式にすることで、変形表示中の節点ピックが画面表示と一致する(spec 6.18.2)。
+    /// プローブ(spec 6.20)と注釈アンカーの位置計算からも共用する。
     /// </summary>
-    private static Vector3 GetLocalPosition(
+    internal static Vector3 GetLocalPosition(
         double[] positions, double[]? displacements, double deformationScale,
         int node, double originX, double originY, double originZ)
     {

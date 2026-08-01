@@ -1,0 +1,86 @@
+<UserControl x:Class="WpfCustomUI.Gallery.Pages.ViewportProbePage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ui="https://schemas.wpfcustomui.dev/xaml"
+             mc:Ignorable="d">
+    <UserControl.Resources>
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Secondary}" />
+            <Setter Property="FontSize" Value="{StaticResource Wcu.FontSize.S}" />
+            <Setter Property="Margin" Value="0,2,0,0" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+    </UserControl.Resources>
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel MaxWidth="860" HorizontalAlignment="Left">
+
+            <TextBlock Text="3D Probe (プローブ+注釈)" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,4" />
+            <TextBlock Style="{StaticResource Hint}"
+                       Text="PickMode=Probe でクリックすると、GPU ID ピック+レイ交差+重心座標補間でヒット点の値を求め、節点バインドの注釈(チップ+リーダーライン)が立つ。デモは一軸引張を受ける円孔付き平板(Kirsch の厳密解、von Mises)。孔の上下縁をプローブすると応力集中(σ_vM = 3S = 300 MPa)が「発見」できる。ラベル書式は ProbeLabelFormatter で単位付きに差し替えた参照実装。" />
+
+            <WrapPanel Margin="0,12,0,8" ItemHeight="28">
+                <ui:ToggleSwitch x:Name="ProbeToggle" Content="プローブモード" IsChecked="True"
+                                 AutomationProperties.AutomationId="ProbeToggle"
+                                 Checked="OnProbeToggleChanged" Unchecked="OnProbeToggleChanged" />
+                <ui:ToggleSwitch x:Name="AnimToggle" Content="振動アニメ(変形追従)" Margin="20,0,0,0"
+                                 AutomationProperties.AutomationId="AnimToggle"
+                                 Checked="OnAnimToggleChanged" Unchecked="OnAnimToggleChanged" />
+                <Button Content="上面視点" Click="OnTopViewClick" MinWidth="70" Margin="20,0,0,0"
+                        AutomationProperties.AutomationId="TopViewButton" />
+                <Button Content="Fit" Click="OnFitClick" MinWidth="60" Margin="12,0,0,0" />
+            </WrapPanel>
+
+            <!-- ビューポート + 凡例 -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <ui:WcuViewport x:Name="Viewport"
+                                Grid.Column="0"
+                                Height="420"
+                                PickMode="Probe"
+                                DeformationScale="0" />
+
+                <ui:ColorMapLegend x:Name="Legend"
+                                   Grid.Column="1"
+                                   Height="280"
+                                   Margin="16,0,0,0"
+                                   VerticalAlignment="Center"
+                                   Title="σ_vM [MPa]" />
+            </Grid>
+            <TextBlock x:Name="RendererInfo" Style="{StaticResource Hint}" />
+
+            <!-- 注釈一覧(削除・全削除はアプリ責務の参照実装) -->
+            <TextBlock Text="注釈一覧" FontWeight="SemiBold" Margin="0,12,0,4" />
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <ListBox x:Name="AnnotationList" Grid.Column="0" MinHeight="72" MaxHeight="140"
+                         AutomationProperties.AutomationId="AnnotationList"
+                         DisplayMemberPath="Text" />
+                <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                    <Button Content="選択を削除" Click="OnRemoveAnnotationClick" MinWidth="90"
+                            AutomationProperties.AutomationId="RemoveAnnotationButton" />
+                    <Button Content="全削除" Click="OnClearAnnotationsClick" MinWidth="90" Margin="0,8,0,0"
+                            AutomationProperties.AutomationId="ClearAnnotationsButton" />
+                </StackPanel>
+            </Grid>
+            <TextBlock x:Name="AnnotationSummary" Style="{StaticResource Hint}"
+                       AutomationProperties.AutomationId="AnnotationSummary"
+                       Text="注釈: 0 件" />
+
+            <TextBlock Style="{StaticResource Hint}" Margin="0,12,0,0"
+                       Text="注釈は (Mesh, NodeIndex) の節点バインドで、変形表示(DeformationScale・振動アニメ・フレーム再生)に毎フレーム追従する。非表示メッシュ・断面クリップされた節点・画面外の注釈は自動で隠れる。空クリック(背景)では何も起きない。ProbePicked イベントで Handled=true にすると自動追加を抑止してアプリ独自の注釈管理もできる。" />
+            <TextBlock Style="{StaticResource Hint}" Margin="0,6,0,0"
+                       Text="Kirsch 解(x 方向一軸引張 S=100 MPa、孔半径 a=10 mm): 孔縁 θ=±90° で σθ = 3S(応力集中係数 3)、θ=0°/180° で σθ = −S。振動アニメの変位は面外たわみ形状を模したもの(物理解ではなく追従デモ用)。" />
+
+            <Border Height="24" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
