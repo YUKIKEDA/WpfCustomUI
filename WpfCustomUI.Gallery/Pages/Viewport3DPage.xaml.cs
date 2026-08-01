@@ -37,6 +37,7 @@ public partial class Viewport3DPage : UserControl
         Viewport.ColorScale = _scale;
         Viewport.MeshSource = _meshes;
         Viewport.SelectionChanged += OnSelectionChanged;
+        Viewport.HoverChanged += OnHoverChanged;
         Legend.Scale = _scale;
 
         Loaded += (_, _) => RendererInfo.Text = Viewport.IsSoftwareRendering
@@ -49,6 +50,18 @@ public partial class Viewport3DPage : UserControl
         var selection = Viewport.Selection;
         SelectionSummary.Text =
             $"Parts: {selection.PartCount}, Faces: {selection.FaceCount}, Nodes: {selection.NodeCount}";
+    }
+
+    /// <summary>ホバープリハイライトの対象表示(Phase 24。UIA での検証にも使う)。</summary>
+    private void OnHoverChanged(object? sender, EventArgs e)
+    {
+        HoverText.Text = Viewport.HoverInfo switch
+        {
+            null => "Hover: -",
+            { IsPart: true } h => $"Hover: Part {h.Mesh.Name}",
+            { NodeIndex: >= 0 } h => $"Hover: Node {h.NodeIndex}",
+            { } h => $"Hover: Face {h.TriangleIndex}",
+        };
     }
 
     /// <summary>
@@ -243,6 +256,24 @@ public partial class Viewport3DPage : UserControl
     }
 
     private void OnClearSelectionClick(object sender, RoutedEventArgs e) => Viewport.Selection.Clear();
+
+    private void OnHoverToggleChanged(object sender, RoutedEventArgs e)
+    {
+        if (Viewport is not null)
+        {
+            Viewport.IsHoverHighlightEnabled = HoverToggle.IsChecked == true;
+        }
+    }
+
+    private void OnThroughToggleChanged(object sender, RoutedEventArgs e)
+    {
+        if (Viewport is not null)
+        {
+            Viewport.RubberBandSelectionMode = ThroughToggle.IsChecked == true
+                ? ViewportRubberBandSelectionMode.Through
+                : ViewportRubberBandSelectionMode.VisibleOnly;
+        }
+    }
 
     private void OnStandardViewClick(object sender, RoutedEventArgs e)
     {

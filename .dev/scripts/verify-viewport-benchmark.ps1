@@ -153,6 +153,9 @@ $LblSelected = [string][char]0x9078 + [char]0x629E + [char]0x9762  # 選択面
 $Lbl10M = '1,000' + [string][char]0x4E07  # 1,000万
 $LblLodTri = 'LOD ' + [string][char]0x4E09 + [char]0x89D2 + [char]0x5F62  # LOD 三角形
 $LblLodActive = 'LOD' + [string][char]0x63CF + [char]0x753B + [char]0x4E2D  # LOD描画中
+$Lbl5M = '500' + [string][char]0x4E07  # 500万
+$LblBuilding = [string][char]0x69CB + [char]0x7BC9 + [char]0x4E2D  # 構築中
+$LblBuildDone = [string][char]0x69CB + [char]0x7BC9 + [char]0x5B8C + [char]0x4E86  # 構築完了
 
 $rootDir = 'd:\home\Programs\CSharpProjects\WpfCustomUI'
 $exe = Join-Path $rootDir 'WpfCustomUI.Gallery\bin\Debug\net10.0-windows\WpfCustomUI.Gallery.exe'
@@ -197,10 +200,40 @@ Assert-Contains '1M pick selects one face' $pick1M ($LblSelected + ' 1 ')
 
 Capture-Region 0 0 1280 960 (Join-Path $outDir 'benchmark-1m-dark.png')
 
+# ---- 2.5 非同期構築(Phase 24、spec 6.24.2): 完了メッセージ+構築中の旧シーン維持+連打競合 ----
+$buildText = Find-ById $root 'BuildText'
+Assert-Contains '1M async build completed message' $buildText.Current.Name $LblBuildDone
+
+# 連打競合: 500万を選んだ直後に 1,000万へ切替(第1世代は世代管理で破棄される)。
+# 構築中は BuildText が進捗を示し、統計(=GPU 上の旧シーン)は 100万のまま維持される
+Select-ComboItem $sizeCombo $Lbl5M
+Start-Sleep -Milliseconds 200
+Select-ComboItem $sizeCombo $Lbl10M
+
+$sawBuilding = $false
+$oldSceneDuringBuild = $false
+$pollDeadline = (Get-Date).AddSeconds(120)
+while ((Get-Date) -lt $pollDeadline) {
+    $bt = $buildText.Current.Name
+    if ($bt -like ('*' + $LblBuilding + '*')) {
+        $sawBuilding = $true
+        if ($statsText.Current.Name -like '*999,698*') {
+            $oldSceneDuringBuild = $true
+        }
+    }
+    if ($statsText.Current.Name -like '*9,999,392*') { break }
+    Start-Sleep -Milliseconds 100
+}
+if ($sawBuilding) { Write-Output 'PASS async build progress shown during build' }
+else { Write-Output 'FAIL async build progress never shown'; $script:failures++ }
+if ($oldSceneDuringBuild) { Write-Output 'PASS old scene stats kept while building' }
+else { Write-Output 'FAIL old scene stats not observed during build'; $script:failures++ }
+
 # ---- 3. 1,000万(side=2236 → 9,999,392 三角形、節点 5,004,169 > 400万 → 複数チャンク、
 #         三角形数 > EdgeExtractionLimit(500万) → エッジスキップ 1) ----
-Select-ComboItem $sizeCombo $Lbl10M
+# 連打競合の最終結果が最後の選択(1,000万)になっていること(spec 6.24.2 世代管理)
 $stats10M = Wait-ForStats $statsText '9,999,392' 180
+Assert-Contains '10M async build completed message' $buildText.Current.Name $LblBuildDone
 Write-Output ("stats(10M): {0}" -f $stats10M)
 Assert-Contains '10M triangles' $stats10M '9,999,392'
 Assert-Contains '10M vertices' $stats10M '5,004,169'

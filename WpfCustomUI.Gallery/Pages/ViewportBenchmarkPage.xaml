@@ -50,6 +50,22 @@
                             PickMode="Face"
                             DeformationScale="0" />
 
+            <!-- 非同期構築の進捗(spec 6.24.2)。構築中も旧シーンの表示と操作は継続する -->
+            <Grid Margin="0,6,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="160" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <ProgressBar x:Name="BuildProgress" Grid.Column="0" Height="10"
+                             VerticalAlignment="Center"
+                             Minimum="0" Maximum="1"
+                             AutomationProperties.AutomationId="BuildProgress" />
+                <TextBlock x:Name="BuildText" Grid.Column="1" Style="{StaticResource Hint}"
+                           Margin="10,0,0,0" VerticalAlignment="Center"
+                           AutomationProperties.AutomationId="BuildText"
+                           Text="構築: -" />
+            </Grid>
+
             <TextBlock x:Name="StatsText" Style="{StaticResource Hint}" Margin="0,6,0,0"
                        AutomationProperties.AutomationId="StatsText"
                        Text="(構築待ち)" />

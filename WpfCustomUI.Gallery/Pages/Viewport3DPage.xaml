@@ -52,6 +52,21 @@
                            Foreground="{DynamicResource Wcu.Brush.Text.Secondary}" />
             </WrapPanel>
 
+            <!-- ホバープリハイライト+貫通選択(Phase 24) -->
+            <WrapPanel Margin="0,0,0,4" ItemHeight="26">
+                <ui:ToggleSwitch x:Name="HoverToggle" Content="ホバープリハイライト" IsChecked="True"
+                                 AutomationProperties.AutomationId="HoverToggle"
+                                 Checked="OnHoverToggleChanged" Unchecked="OnHoverToggleChanged" />
+                <ui:ToggleSwitch x:Name="ThroughToggle" Content="貫通矩形選択" Margin="20,0,0,0"
+                                 AutomationProperties.AutomationId="ThroughToggle"
+                                 Checked="OnThroughToggleChanged" Unchecked="OnThroughToggleChanged" />
+                <TextBlock x:Name="HoverText"
+                           AutomationProperties.AutomationId="HoverText"
+                           Text="Hover: -"
+                           VerticalAlignment="Center" Margin="16,0,0,0"
+                           Foreground="{DynamicResource Wcu.Brush.Text.Secondary}" />
+            </WrapPanel>
+
             <!-- 標準視点(Phase 17) -->
             <WrapPanel Margin="0,0,0,8" ItemHeight="26">
                 <TextBlock Text="視点:" VerticalAlignment="Center" Margin="0,0,8,0" />

@@ -52,11 +52,41 @@ internal struct FrameConstants
     public Vector4 ClipPlane;    // xyz=正規化法線, w=定数項。無効時 (0,0,0,1)
 }
 
-/// <summary>描画 1 パーツ分の入力(メッシュ+選択ハイライト情報)。</summary>
+/// <summary>描画 1 パーツ分の入力(メッシュ+選択ハイライト+ホバープリハイライト情報)。</summary>
 internal readonly record struct RenderItem(
     GpuMesh Mesh,
     GpuSelectionMesh? Selection,
-    bool IsPartSelected);
+    bool IsPartSelected,
+    GpuSelectionMesh? Hover = null,
+    bool IsPartHovered = false);
+
+/// <summary>
+/// 非同期ジオメトリ構築中にレンダラーが破棄されても ID3D11Device を安全に使い続けるための
+/// AddRef 済みデバイス参照(spec 6.24.2)。構築完了(または破棄)時に必ず Dispose すること。
+/// Dispose は任意スレッドから呼べる(COM Release はスレッドセーフ)。
+/// </summary>
+internal sealed unsafe class DeviceLease : IDisposable
+{
+    private ID3D11Device* _device;
+
+    internal DeviceLease(ID3D11Device* device)
+    {
+        ((IUnknown*)device)->AddRef();
+        _device = device;
+    }
+
+    /// <summary>リース中のデバイス(Dispose 後は使用不可)。</summary>
+    public ComPtr<ID3D11Device> Device => new(_device);
+
+    public void Dispose()
+    {
+        if (_device is not null)
+        {
+            ((IUnknown*)_device)->Release();
+            _device = null;
+        }
+    }
+}
 
 /// <summary>
 /// D3D11 レンダリングエンジン本体(spec 6.16.1 / 6.16.2)。
@@ -137,6 +167,9 @@ internal sealed unsafe class ViewportRenderer : IDisposable
     private ComPtr<ID3D11RenderTargetView> _pickRtv;
     private ComPtr<ID3D11Texture2D> _pickDepthTexture;
     private ComPtr<ID3D11DepthStencilView> _pickDepthView;
+
+    // ホバープリハイライトの全面 ID 読み戻し用ステージング(spec 6.24.3、初回キャプチャ時に遅延作成)
+    private ComPtr<ID3D11Texture2D> _hoverStagingTexture;
 
     public ViewportRenderer()
     {
@@ -305,6 +338,7 @@ internal sealed unsafe class ViewportRenderer : IDisposable
         Vector4 highlightColor,
         Vector4 nodeColor,
         float nodePointSizePixels,
+        Vector4 hoverColor,
         float deformationScale,
         float glyphScale,
         bool showUndeformedWireframe,
@@ -526,81 +560,93 @@ internal sealed unsafe class ViewportRenderer : IDisposable
         // パス 3: 選択面ハイライト(半透明オーバーレイ、深度書き込みなし+微小手前シフト)
         // パーツ選択は全チャンクの三角形をそのまま描く(追加バッファ不要)。
         // 面選択は GpuSelectionMesh が独立の頂点バッファ(pos+disp 24B)を持つため
-        // メッシュのチャンク分割とは無関係に 1 ドローで描ける(spec 6.22.2)
+        // メッシュのチャンク分割とは無関係に 1 ドローで描ける(spec 6.22.2)。
+        // ホバープリハイライト(spec 6.24.3)は同じ機構で薄い色を先に描き、選択を上に重ねる
         ctx->OMSetBlendState(_alphaBlendState.Handle, null, 0xFFFFFFFF);
         ctx->OMSetDepthStencilState(_highlightDepthState.Handle, 0);
         var faceBuffers = stackalloc ID3D11Buffer*[2];
         var faceStrides = stackalloc uint[2] { GpuSelectionMesh.FaceVertexStride, GpuSelectionMesh.FaceVertexStride };
         var faceOffsets = stackalloc uint[2] { 0, 12 };
-        foreach (var item in items)
+        foreach (var hoverPass in (ReadOnlySpan<bool>)[true, false])
         {
-            var isFaceSelection = item.Selection is { FaceVertexCount: > 0 };
-            if (!item.IsPartSelected && !isFaceSelection)
+            foreach (var item in items)
             {
-                continue;
-            }
-
-            constants.ObjectColor = highlightColor;
-            constants.ScalarParams.Z = 0.0f;
-            constants.ClipPlane = item.Mesh.IsClippable ? clipPlane : ViewportSection.DisabledClip;
-            UploadConstants(in constants);
-
-            ctx->IASetInputLayout(_lineLayout.Handle);
-            ctx->VSSetShader(_lineVs.Handle, null, 0);
-            ctx->PSSetShader(_linePs.Handle, null, 0);
-            ctx->IASetPrimitiveTopology(D3DPrimitiveTopology.D3D11PrimitiveTopologyTrianglelist);
-
-            if (item.IsPartSelected)
-            {
-                // LOD 描画中はハイライトも LOD チャンクに重ねる(フル解像度を重ねると LOD の意味がない)
-                var mesh = item.Mesh;
-                var meshUseLod = useLod && mesh.HasLod;
-                var expand = mesh.MaxDisplacementMagnitude * MathF.Abs(deformationScale);
-                foreach (var chunk in meshUseLod ? mesh.LodChunks : mesh.Chunks)
+                var overlay = hoverPass ? item.Hover : item.Selection;
+                var isPartPass = hoverPass ? item.IsPartHovered : item.IsPartSelected;
+                var isFacePass = overlay is { FaceVertexCount: > 0 };
+                if (!isPartPass && !isFacePass)
                 {
-                    if (!ViewportCulling.IntersectsFrustum(frustum, chunk.BoundsMin, chunk.BoundsMax, expand))
-                    {
-                        continue;
-                    }
-
-                    BindVertexBuffer(ctx, chunk);
-                    ctx->IASetIndexBuffer(chunk.TriangleIndexBufferHandle, DxgiFormat.FormatR32Uint, 0);
-                    ctx->DrawIndexed(chunk.TriangleIndexCount, 0, 0);
+                    continue;
                 }
-            }
-            else
-            {
-                var selection = item.Selection!;
-                // 同一バッファを slot 0(offset 0)/slot 1(offset 12)へ二重バインドして
-                // ライン系シェーダの 2 スロットレイアウトを満たす(断面インジケータと同じ手法)
-                faceBuffers[0] = selection.FaceVertexBufferHandle;
-                faceBuffers[1] = selection.FaceVertexBufferHandle;
-                ctx->IASetVertexBuffers(0, 2, faceBuffers, faceStrides, faceOffsets);
-                ctx->Draw(selection.FaceVertexCount, 0);
+
+                constants.ObjectColor = hoverPass ? hoverColor : highlightColor;
+                constants.ScalarParams.Z = 0.0f;
+                constants.ClipPlane = item.Mesh.IsClippable ? clipPlane : ViewportSection.DisabledClip;
+                UploadConstants(in constants);
+
+                ctx->IASetInputLayout(_lineLayout.Handle);
+                ctx->VSSetShader(_lineVs.Handle, null, 0);
+                ctx->PSSetShader(_linePs.Handle, null, 0);
+                ctx->IASetPrimitiveTopology(D3DPrimitiveTopology.D3D11PrimitiveTopologyTrianglelist);
+
+                if (isPartPass)
+                {
+                    // LOD 描画中はハイライトも LOD チャンクに重ねる(フル解像度を重ねると LOD の意味がない)
+                    var mesh = item.Mesh;
+                    var meshUseLod = useLod && mesh.HasLod;
+                    var expand = mesh.MaxDisplacementMagnitude * MathF.Abs(deformationScale);
+                    foreach (var chunk in meshUseLod ? mesh.LodChunks : mesh.Chunks)
+                    {
+                        if (!ViewportCulling.IntersectsFrustum(frustum, chunk.BoundsMin, chunk.BoundsMax, expand))
+                        {
+                            continue;
+                        }
+
+                        BindVertexBuffer(ctx, chunk);
+                        ctx->IASetIndexBuffer(chunk.TriangleIndexBufferHandle, DxgiFormat.FormatR32Uint, 0);
+                        ctx->DrawIndexed(chunk.TriangleIndexCount, 0, 0);
+                    }
+                }
+                else
+                {
+                    // 同一バッファを slot 0(offset 0)/slot 1(offset 12)へ二重バインドして
+                    // ライン系シェーダの 2 スロットレイアウトを満たす(断面インジケータと同じ手法)
+                    faceBuffers[0] = overlay!.FaceVertexBufferHandle;
+                    faceBuffers[1] = overlay.FaceVertexBufferHandle;
+                    ctx->IASetVertexBuffers(0, 2, faceBuffers, faceStrides, faceOffsets);
+                    ctx->Draw(overlay.FaceVertexCount, 0);
+                }
             }
         }
 
-        // パス 4: 選択節点ポイント(丸ポイント、深度テストあり・書き込みなし)
-        foreach (var item in items)
+        // パス 4: 選択節点ポイント(丸ポイント、深度テストあり・書き込みなし)。
+        // ホバー節点(spec 6.24.3)も同じポイントシェーダで薄い色を先に描く
+        foreach (var hoverPass in (ReadOnlySpan<bool>)[true, false])
         {
-            if (item.Selection is not { NodeVertexCount: > 0 } selection)
+            foreach (var item in items)
             {
-                continue;
+                var overlay = hoverPass ? item.Hover : item.Selection;
+                if (overlay is not { NodeVertexCount: > 0 } points)
+                {
+                    continue;
+                }
+
+                constants.ObjectColor = hoverPass
+                    ? hoverColor with { W = MathF.Min(hoverColor.W * 2.0f, 0.9f) }
+                    : nodeColor;
+                constants.ClipPlane = item.Mesh.IsClippable ? clipPlane : ViewportSection.DisabledClip;
+                UploadConstants(in constants);
+
+                var vb = points.NodeVertexBufferHandle;
+                var stride = GpuSelectionMesh.PointVertexStride;
+                uint offset = 0;
+                ctx->IASetVertexBuffers(0, 1, &vb, &stride, &offset);
+                ctx->IASetInputLayout(_pointLayout.Handle);
+                ctx->VSSetShader(_pointVs.Handle, null, 0);
+                ctx->PSSetShader(_pointPs.Handle, null, 0);
+                ctx->IASetPrimitiveTopology(D3DPrimitiveTopology.D3D11PrimitiveTopologyTrianglelist);
+                ctx->Draw(points.NodeVertexCount, 0);
             }
-
-            constants.ObjectColor = nodeColor;
-            constants.ClipPlane = item.Mesh.IsClippable ? clipPlane : ViewportSection.DisabledClip;
-            UploadConstants(in constants);
-
-            var vb = selection.NodeVertexBufferHandle;
-            var stride = GpuSelectionMesh.PointVertexStride;
-            uint offset = 0;
-            ctx->IASetVertexBuffers(0, 1, &vb, &stride, &offset);
-            ctx->IASetInputLayout(_pointLayout.Handle);
-            ctx->VSSetShader(_pointVs.Handle, null, 0);
-            ctx->PSSetShader(_pointPs.Handle, null, 0);
-            ctx->IASetPrimitiveTopology(D3DPrimitiveTopology.D3D11PrimitiveTopologyTrianglelist);
-            ctx->Draw(selection.NodeVertexCount, 0);
         }
 
         // パス 5: 断面平面インジケータ(spec 6.19.4)。半透明クワッド+輪郭線。
@@ -783,6 +829,75 @@ internal sealed unsafe class ViewportRenderer : IDisposable
         return result;
     }
 
+    /// <summary>
+    /// ホバープリハイライト用に ID パスをフル解像度で CPU へ読み戻す(spec 6.24.3)。
+    /// 結果は 1 ピクセルにつき uint ×2(R=パーツ ID+1 / G=グローバル三角形インデックス)の
+    /// 行優先バッファ。<paramref name="destination"/> はサイズが合っていれば再利用される
+    /// (毎キャプチャの GC 割り当てを避ける)。以後のマウス移動はこのキャッシュ参照だけで済む。
+    /// </summary>
+    public bool CaptureIdBuffer(
+        IReadOnlyList<GpuMesh> meshes, in Matrix4x4 viewProj, float deformationScale,
+        Vector4 clipPlane, ref uint[]? destination)
+    {
+        if (meshes.Count == 0 || _msaaRtv.Handle is null || Width <= 0 || Height <= 0)
+        {
+            return false;
+        }
+
+        RenderIdPass(meshes, in viewProj, deformationScale, clipPlane);
+
+        var device = _device.Handle;
+        var ctx = _context.Handle;
+
+        if (_hoverStagingTexture.Handle is null)
+        {
+            var stagingDesc = new Texture2DDesc
+            {
+                Width = (uint)Width,
+                Height = (uint)Height,
+                MipLevels = 1,
+                ArraySize = 1,
+                Format = DxgiFormat.FormatR32G32Uint,
+                SampleDesc = new SampleDesc(1, 0),
+                Usage = Usage.Staging,
+                CPUAccessFlags = (uint)CpuAccessFlag.Read,
+            };
+            SilkMarshal.ThrowHResult(device->CreateTexture2D(&stagingDesc, null, _hoverStagingTexture.GetAddressOf()));
+        }
+
+        ctx->CopyResource((ID3D11Resource*)_hoverStagingTexture.Handle, (ID3D11Resource*)_pickTexture.Handle);
+
+        var required = Width * Height * 2;
+        if (destination is null || destination.Length != required)
+        {
+            destination = new uint[required];
+        }
+
+        var mapped = default(MappedSubresource);
+        SilkMarshal.ThrowHResult(ctx->Map((ID3D11Resource*)_hoverStagingTexture.Handle, 0, Map.Read, 0, &mapped));
+        try
+        {
+            fixed (uint* pDest = destination)
+            {
+                var rowBytes = Width * 2 * sizeof(uint);
+                for (var row = 0; row < Height; row++)
+                {
+                    Buffer.MemoryCopy(
+                        (byte*)mapped.PData + row * (int)mapped.RowPitch,
+                        (byte*)pDest + row * rowBytes,
+                        rowBytes,
+                        rowBytes);
+                }
+            }
+        }
+        finally
+        {
+            ctx->Unmap((ID3D11Resource*)_hoverStagingTexture.Handle, 0);
+        }
+
+        return true;
+    }
+
     /// <summary>ID パスを描画する(R=パーツID+1 / G=三角形インデックス、非 MSAA、専用深度)。</summary>
     private void RenderIdPass(
         IReadOnlyList<GpuMesh> meshes, in Matrix4x4 viewProj, float deformationScale, Vector4 clipPlane)
@@ -928,6 +1043,12 @@ internal sealed unsafe class ViewportRenderer : IDisposable
         Bounds3D meshBounds = default) =>
         GpuMesh.Create(_device, mesh, originX, originY, originZ, edgeExtractionLimit,
             interactiveLodThreshold, meshBounds);
+
+    /// <summary>
+    /// 非同期ジオメトリ構築用の AddRef 済みデバイス参照を取得する(spec 6.24.2)。
+    /// レンダラーが構築中に破棄されても、リースが生きている間はデバイスが有効に保たれる。
+    /// </summary>
+    public DeviceLease AcquireDeviceLease() => new(_device.Handle);
 
     /// <summary>変位バッファのみ差し替える(過渡再生のフレーム更新用、spec 6.18.3)。</summary>
     public void UpdateMeshDisplacements(GpuMesh mesh, double[]? displacements) =>
@@ -1536,6 +1657,8 @@ internal sealed unsafe class ViewportRenderer : IDisposable
         _pickDepthTexture.Dispose();
         _pickRtv.Dispose();
         _pickTexture.Dispose();
+        _hoverStagingTexture.Dispose();
+        _hoverStagingTexture = default;
         _stagingTexture = default;
         _resolveTexture = default;
         _depthView = default;

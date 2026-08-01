@@ -161,6 +161,24 @@ public class WcuViewport : Control
             new PropertyMetadata(5_000_000, OnGeometryOptionChanged),
             v => (int)v >= 0);
 
+    public static readonly DependencyProperty IsHoverHighlightEnabledProperty =
+        DependencyProperty.Register(
+            nameof(IsHoverHighlightEnabled), typeof(bool), typeof(WcuViewport),
+            new PropertyMetadata(true, OnIsHoverHighlightEnabledChanged));
+
+    public static readonly DependencyProperty RubberBandSelectionModeProperty =
+        DependencyProperty.Register(
+            nameof(RubberBandSelectionMode), typeof(ViewportRubberBandSelectionMode), typeof(WcuViewport),
+            new PropertyMetadata(ViewportRubberBandSelectionMode.VisibleOnly));
+
+    private static readonly DependencyPropertyKey IsGeometryBuildingPropertyKey =
+        DependencyProperty.RegisterReadOnly(
+            nameof(IsGeometryBuilding), typeof(bool), typeof(WcuViewport),
+            new PropertyMetadata(false));
+
+    public static readonly DependencyProperty IsGeometryBuildingProperty =
+        IsGeometryBuildingPropertyKey.DependencyProperty;
+
     private readonly List<(ViewportMesh Source, GpuMesh Gpu)> _gpuMeshes = [];
     private readonly HashSet<ViewportMesh> _displacementDirtyMeshes = [];
     private readonly List<RenderItem> _renderItems = [];
@@ -216,6 +234,29 @@ public class WcuViewport : Control
     private TimeSpan _lastGeometryBuildTime;
     private TimeSpan _lastRenderTime;
 
+    // 非同期ジオメトリ構築(spec 6.24.2): 世代管理+構築中の旧シーン表示
+    private readonly GeometryBuildCoordinator _buildCoordinator = new();
+    private bool _fitToViewPending;
+
+    // ホバープリハイライト(spec 6.24.3): 静止時にキャプチャした全面 ID バッファと
+    // そのときの描画状態スタンプ(不一致なら再キャプチャ)
+    private uint[]? _hoverIdBuffer;
+    private bool _hoverIdValid;
+    private Matrix4x4 _hoverIdViewProj;
+    private float _hoverIdDeformScale;
+    private Vector4 _hoverIdClip;
+    private int _hoverIdWidth;
+    private int _hoverIdHeight;
+    private int _hoverIdSceneVersion;
+    private int _sceneVersion; // ジオメトリ/変位/可視状態が変わるたびに増える
+
+    // 現在のホバー対象と GPU オーバーレイ
+    private ViewportMesh? _hoverMesh;
+    private int _hoverTriangle = -1;
+    private int _hoverNode = -1;
+    private bool _hoverIsPart;
+    private GpuSelectionMesh? _hoverGpu;
+
     // 操作中 LOD(spec 6.23.3): カメラ操作・振動アニメの間は LOD チャンクで描画し、
     // 操作が止まって一定時間後にフル解像度へ戻す
     private static readonly TimeSpan LodRestoreDelay = TimeSpan.FromMilliseconds(300);
@@ -261,6 +302,24 @@ public class WcuViewport : Control
 
     /// <summary>選択内容が変わったときに発火する(<see cref="Selection"/> の Changed の転送)。</summary>
     public event EventHandler? SelectionChanged;
+
+    /// <summary>
+    /// 非同期ジオメトリ構築の進捗(spec 6.24.2)。UI スレッドで発火する。
+    /// 構築中も旧シーンの表示と操作は継続する(進捗バー表示などに使う)。
+    /// </summary>
+    public event EventHandler<ViewportBuildProgressEventArgs>? GeometryBuildProgressChanged;
+
+    /// <summary>
+    /// 非同期ジオメトリ構築が完了して新しいシーンに切り替わったときに発火する(spec 6.24.2)。
+    /// 途中で MeshSource が再度変わった場合、破棄された古い世代では発火しない。
+    /// </summary>
+    public event EventHandler? GeometryBuildCompleted;
+
+    /// <summary>ホバープリハイライトの対象が変わったときに発火する(spec 6.24.3)。</summary>
+    public event EventHandler? HoverChanged;
+
+    /// <summary>現在のホバー対象(なければ null)。粒度は <see cref="PickMode"/> に追従する。</summary>
+    public ViewportHoverInfo? HoverInfo { get; private set; }
 
     /// <summary>
     /// プローブ(<see cref="ViewportPickMode.Probe"/>)のクリックがメッシュにヒットしたときに発火する
@@ -417,10 +476,19 @@ public class WcuViewport : Control
     /// <summary>WARP(ソフトウェアラスタライザ)で動作しているか。</summary>
     public bool IsSoftwareRendering => _renderer?.IsSoftwareRendering ?? false;
 
-    /// <summary>全メッシュが収まるようにカメラを合わせる。</summary>
+    /// <summary>
+    /// 全メッシュが収まるようにカメラを合わせる。非同期構築中(または構築待ち)の場合は
+    /// 完了時に新しい境界で自動的にフィットする(spec 6.24.2)。
+    /// </summary>
     public void FitToView()
     {
-        EnsureGeometry();
+        if (_geometryDirty || IsGeometryBuilding)
+        {
+            _fitToViewPending = true;
+            InvalidateViewport();
+            return;
+        }
+
         if (!_localBounds.IsEmpty)
         {
             Camera.FitToBounds(_localBounds);
@@ -495,6 +563,37 @@ public class WcuViewport : Control
         get => (int)GetValue(InteractiveLodThresholdProperty);
         set => SetValue(InteractiveLodThresholdProperty, value);
     }
+
+    /// <summary>
+    /// ホバープリハイライト(spec 6.24.3、既定 true)。<see cref="PickMode"/> が None 以外のとき、
+    /// カーソル下の要素(パーツ/面/最近傍節点)を薄いアクセント色で予告表示する。
+    /// シーン静止時に ID パスを 1 回 CPU キャッシュし、マウス移動はキャッシュ参照のみのため
+    /// 大規模メッシュでもコストは移動あたりゼロに近い。カメラ操作中(LOD 描画中)は無効。
+    /// </summary>
+    public bool IsHoverHighlightEnabled
+    {
+        get => (bool)GetValue(IsHoverHighlightEnabledProperty);
+        set => SetValue(IsHoverHighlightEnabledProperty, value);
+    }
+
+    /// <summary>
+    /// 矩形(ラバーバンド)選択の対象範囲(spec 6.24.4、既定 VisibleOnly)。
+    /// Through にすると隠面も含めた貫通選択になる(CPU 並列のスクリーン射影判定。
+    /// チャンク AABB 粗篩+変形後座標+断面クリップ除外)。
+    /// </summary>
+    public ViewportRubberBandSelectionMode RubberBandSelectionMode
+    {
+        get => (ViewportRubberBandSelectionMode)GetValue(RubberBandSelectionModeProperty);
+        set => SetValue(RubberBandSelectionModeProperty, value);
+    }
+
+    /// <summary>
+    /// バックグラウンドでジオメトリ構築中か(spec 6.24.2、読み取り専用)。
+    /// MeshSource の変更で自動的に非同期構築が始まり、完了までは旧シーンの表示と操作が続く。
+    /// 進捗は <see cref="GeometryBuildProgressChanged"/>、完了は
+    /// <see cref="GeometryBuildCompleted"/> で通知される。
+    /// </summary>
+    public bool IsGeometryBuilding => (bool)GetValue(IsGeometryBuildingProperty);
 
     /// <summary>
     /// 現在のシーンの統計スナップショットを返す(spec 6.22.5)。
@@ -840,7 +939,7 @@ public class WcuViewport : Control
             var sizeChanged = pixelWidth != _renderer.Width || pixelHeight != _renderer.Height;
             _renderer.Resize(pixelWidth, pixelHeight);
 
-            EnsureGeometry();
+            EnsureGeometryAsync();
             EnsureDisplacements();
             EnsureGlyphs();
             EnsureColorMap();
@@ -856,6 +955,7 @@ public class WcuViewport : Control
             var accent = GetTokenColor("Wcu.Color.Accent.Default", Color.FromRgb(0x00, 0x7A, 0xCC));
             var highlightColor = ToVector4(accent, 0.55);
             var nodeColor = ToVector4(accent, 1.0);
+            var hoverColor = ToVector4(accent, 0.30); // ホバーは選択より薄く(spec 6.24.3)
             var pointSize = (float)(7.0 * dpi.DpiScaleX);
 
             // ピック(PickPixel 等)が直前の描画と同じ変形量を使えるよう保存する
@@ -879,12 +979,14 @@ public class WcuViewport : Control
             if (_renderer.CanUseD3DImage)
             {
                 PresentViaD3DImage(sizeChanged, viewProj, contour, background, edgeColor,
-                    highlightColor, nodeColor, pointSize, clipPlane, sectionIndicator, sectionFill, sectionLine);
+                    highlightColor, nodeColor, hoverColor, pointSize,
+                    clipPlane, sectionIndicator, sectionFill, sectionLine);
             }
             else
             {
                 PresentViaWriteableBitmap(sizeChanged, viewProj, contour, background, edgeColor,
-                    highlightColor, nodeColor, pointSize, clipPlane, sectionIndicator, sectionFill, sectionLine);
+                    highlightColor, nodeColor, hoverColor, pointSize,
+                    clipPlane, sectionIndicator, sectionFill, sectionLine);
             }
 
             _lastRenderTime = renderTimer.Elapsed;
@@ -912,7 +1014,7 @@ public class WcuViewport : Control
 
     private void PresentViaD3DImage(
         bool sizeChanged, Matrix4x4 viewProj, ContourSettings contour, Color background, Color edgeColor,
-        Vector4 highlightColor, Vector4 nodeColor, float pointSize,
+        Vector4 highlightColor, Vector4 nodeColor, Vector4 hoverColor, float pointSize,
         Vector4 clipPlane, float[]? sectionIndicator, Vector4 sectionFill, Vector4 sectionLine)
     {
         if (_d3dImage is null)
@@ -948,7 +1050,7 @@ public class WcuViewport : Control
             _renderer.Render(
                 _renderItems, in viewProj, Camera.GetEyeDirection(),
                 ToVector4(background, 1.0), in contour, ShowContours, ToVector4(edgeColor, 1.0),
-                highlightColor, nodeColor, pointSize,
+                highlightColor, nodeColor, pointSize, hoverColor,
                 _lastEffectiveDeformationScale, GetEffectiveGlyphScale(),
                 ShowUndeformedWireframe, ToVector4(edgeColor, 0.35),
                 clipPlane, sectionIndicator, sectionFill, sectionLine,
@@ -964,13 +1066,13 @@ public class WcuViewport : Control
 
     private void PresentViaWriteableBitmap(
         bool sizeChanged, Matrix4x4 viewProj, ContourSettings contour, Color background, Color edgeColor,
-        Vector4 highlightColor, Vector4 nodeColor, float pointSize,
+        Vector4 highlightColor, Vector4 nodeColor, Vector4 hoverColor, float pointSize,
         Vector4 clipPlane, float[]? sectionIndicator, Vector4 sectionFill, Vector4 sectionLine)
     {
         _renderer!.Render(
             _renderItems, in viewProj, Camera.GetEyeDirection(),
             ToVector4(background, 1.0), in contour, ShowContours, ToVector4(edgeColor, 1.0),
-            highlightColor, nodeColor, pointSize,
+            highlightColor, nodeColor, pointSize, hoverColor,
             _lastEffectiveDeformationScale, GetEffectiveGlyphScale(),
             ShowUndeformedWireframe, ToVector4(edgeColor, 0.35),
             clipPlane, sectionIndicator, sectionFill, sectionLine,
@@ -1002,7 +1104,22 @@ public class WcuViewport : Control
 
     // ================= ジオメトリ / カラーマップ同期 =================
 
-    private void EnsureGeometry()
+    /// <summary>非同期構築 1 回分の結果(バックグラウンドで組み立て、UI スレッドで反映する)。</summary>
+    private sealed record GeometryBuildResult(
+        List<(ViewportMesh Source, GpuMesh Gpu)> Meshes,
+        List<ViewportMesh> Sources,
+        Bounds3D LocalBounds,
+        double OriginX,
+        double OriginY,
+        double OriginZ,
+        TimeSpan BuildTime);
+
+    /// <summary>
+    /// ジオメトリが変更されていれば非同期構築を開始する(spec 6.24.2)。
+    /// 構築中も旧シーンの表示・操作・ピックは継続し、完了時に新シーンへアトミックに切り替わる。
+    /// 構築中に再度変更が来た場合は世代管理で古い構築をキャンセルし、結果を破棄する。
+    /// </summary>
+    private async void EnsureGeometryAsync()
     {
         // レンダラー未作成時は次の RenderFrame で再試行される
         if (_renderer is null || !_geometryDirty)
@@ -1010,58 +1127,172 @@ public class WcuViewport : Control
             return;
         }
 
-        var buildTimer = System.Diagnostics.Stopwatch.StartNew();
+        _geometryDirty = false;
+        var (generation, token) = _buildCoordinator.Begin();
+        var renderer = _renderer;
+        var meshes = MeshSource?.OfType<ViewportMesh>().ToList() ?? [];
+        var edgeLimit = EdgeExtractionLimit;
+        var lodThreshold = InteractiveLodThreshold;
 
+        SetValue(IsGeometryBuildingPropertyKey, true);
+        GeometryBuildProgressChanged?.Invoke(this, new ViewportBuildProgressEventArgs("準備", 0.0));
+
+        // デバイスは AddRef 済みリースで持ち出す: 構築中にレンダラーが破棄(デバイスロスト・
+        // アンロード)されてもバックグラウンドの CreateBuffer が解放済みデバイスに触れない
+        using var lease = renderer.AcquireDeviceLease();
+        var device = lease.Device;
+
+        GeometryBuildResult? result = null;
+        try
+        {
+            result = await Task.Run(
+                () => BuildGeometryCore(
+                    device, meshes, edgeLimit, lodThreshold, token,
+                    (stage, progress) => ReportBuildProgress(generation, stage, progress)),
+                CancellationToken.None);
+        }
+        catch (OperationCanceledException)
+        {
+            // 新しい世代に取って代わられた(またはアンロード)。後始末は下の世代チェックで行う
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            // デバイス系の構築失敗。RenderFrame の失敗処理と同様にレンダラーを作り直す
+            if (_buildCoordinator.IsCurrent(generation))
+            {
+                SetValue(IsGeometryBuildingPropertyKey, false);
+                ReleaseRenderer();
+                if (++_consecutiveFailures >= 2)
+                {
+                    _renderBroken = true;
+                }
+                else
+                {
+                    InvalidateViewport();
+                }
+            }
+
+            return;
+        }
+
+        // 途中で新しい構築が始まった / アンロードされた世代の結果は捨てる
+        if (!_buildCoordinator.IsCurrent(generation) || !ReferenceEquals(renderer, _renderer))
+        {
+            DisposeBuildResult(result);
+            return;
+        }
+
+        SetValue(IsGeometryBuildingPropertyKey, false);
+        if (result is null)
+        {
+            return;
+        }
+
+        ApplyBuildResult(result);
+        GeometryBuildCompleted?.Invoke(this, EventArgs.Empty);
+        InvalidateViewport();
+    }
+
+    /// <summary>
+    /// 構築本体(バックグラウンドスレッド)。WPF オブジェクトには触れず、ViewportMesh の
+    /// 配列参照(読み取りのみ)と AddRef 済みデバイスだけを使う。キャンセルはチャンク境界で
+    /// 確認され、途中破棄時は作成済みの GPU リソースを解放して抜ける。
+    /// </summary>
+    private static GeometryBuildResult BuildGeometryCore(
+        Silk.NET.Core.Native.ComPtr<Silk.NET.Direct3D11.ID3D11Device> device,
+        List<ViewportMesh> meshes, int edgeExtractionLimit, int interactiveLodThreshold,
+        CancellationToken token, Action<string, double> reportProgress)
+    {
+        var buildTimer = System.Diagnostics.Stopwatch.StartNew();
+        var built = new List<(ViewportMesh Source, GpuMesh Gpu)>(meshes.Count);
+        try
+        {
+            var bounds = Bounds3D.Empty;
+            var meshBounds = new List<Bounds3D>(meshes.Count);
+            foreach (var mesh in meshes)
+            {
+                token.ThrowIfCancellationRequested();
+                var b = ViewportGeometry.ComputeBounds(mesh.Positions);
+                meshBounds.Add(b);
+                bounds = bounds.Union(b);
+            }
+
+            if (bounds.IsEmpty)
+            {
+                return new GeometryBuildResult(built, meshes, Bounds3D.Empty, 0.0, 0.0, 0.0, buildTimer.Elapsed);
+            }
+
+            // シーン中心で再センタリング(spec 6.16.3: 大座標対策)
+            var (ox, oy, oz) = (bounds.CenterX, bounds.CenterY, bounds.CenterZ);
+            var localBounds = new Bounds3D(
+                bounds.MinX - ox, bounds.MinY - oy, bounds.MinZ - oz,
+                bounds.MaxX - ox, bounds.MaxY - oy, bounds.MaxZ - oz);
+
+            for (var i = 0; i < meshes.Count; i++)
+            {
+                token.ThrowIfCancellationRequested();
+                var stage = meshes.Count == 1
+                    ? "ジオメトリ構築"
+                    : FormattableString.Invariant($"ジオメトリ構築 ({i + 1}/{meshes.Count})");
+                var meshIndex = i;
+                var gpu = GpuMesh.Create(
+                    device, meshes[i], ox, oy, oz, edgeExtractionLimit, interactiveLodThreshold,
+                    meshBounds[i],
+                    cancellationToken: token,
+                    progress: p => reportProgress(stage, (meshIndex + p) / meshes.Count));
+                if (gpu is not null)
+                {
+                    built.Add((meshes[i], gpu));
+                }
+            }
+
+            return new GeometryBuildResult(built, meshes, localBounds, ox, oy, oz, buildTimer.Elapsed);
+        }
+        catch
+        {
+            foreach (var (_, gpu) in built)
+            {
+                gpu.Dispose();
+            }
+
+            throw;
+        }
+    }
+
+    /// <summary>進捗をバックグラウンドから UI スレッドへ転送する(古い世代の通知は捨てる)。</summary>
+    private void ReportBuildProgress(int generation, string stage, double progress) =>
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (_buildCoordinator.IsCurrent(generation))
+            {
+                GeometryBuildProgressChanged?.Invoke(this, new ViewportBuildProgressEventArgs(stage, progress));
+            }
+        });
+
+    /// <summary>完成した構築結果を旧シーンと入れ替える(UI スレッド)。</summary>
+    private void ApplyBuildResult(GeometryBuildResult result)
+    {
         foreach (var (_, gpu) in _gpuMeshes)
         {
             gpu.Dispose();
         }
 
         _gpuMeshes.Clear();
-        _displacementDirtyMeshes.Clear(); // 再構築で最新の変位が取り込まれる
-        _geometryDirty = false;
-        _glyphDirty = true; // GpuMesh 再作成でインスタンスバッファも失われる
+        _gpuMeshes.AddRange(result.Meshes);
 
-        var meshes = MeshSource?.OfType<ViewportMesh>().ToList() ?? [];
-
-        // MeshSource から消えたパーツの選択を掃除し、ジオメトリ差し替えに追従して
-        // 選択バッファも作り直す
-        Selection.PruneTo(meshes);
+        // MeshSource から消えたパーツの選択・ホバーを掃除し、ジオメトリ差し替えに追従して
+        // 選択バッファ・グリフも作り直す。構築中に変位が差し替えられたメッシュは
+        // _displacementDirtyMeshes に残っているため、次フレームの EnsureDisplacements で
+        // 最新の変位が新しい GPU メッシュへ反映される
+        Selection.PruneTo(result.Sources);
         _selectionDirty = true;
+        _glyphDirty = true;
+        ClearHover();
+        _sceneVersion++;
 
-        var bounds = Bounds3D.Empty;
-        var meshBounds = new List<Bounds3D>(meshes.Count);
-        foreach (var mesh in meshes)
-        {
-            var b = ViewportGeometry.ComputeBounds(mesh.Positions);
-            meshBounds.Add(b);
-            bounds = bounds.Union(b);
-        }
-
-        if (bounds.IsEmpty)
-        {
-            _localBounds = Bounds3D.Empty;
-            _hasAnyLod = false;
-            _lastGeometryBuildTime = buildTimer.Elapsed;
-            return;
-        }
-
-        // シーン中心で再センタリング(spec 6.16.3: 大座標対策)
-        var (ox, oy, oz) = (bounds.CenterX, bounds.CenterY, bounds.CenterZ);
-        (_originX, _originY, _originZ) = (ox, oy, oz);
-        _localBounds = new Bounds3D(
-            bounds.MinX - ox, bounds.MinY - oy, bounds.MinZ - oz,
-            bounds.MaxX - ox, bounds.MaxY - oy, bounds.MaxZ - oz);
-
-        for (var i = 0; i < meshes.Count; i++)
-        {
-            var gpu = _renderer.CreateMesh(
-                meshes[i], ox, oy, oz, EdgeExtractionLimit, InteractiveLodThreshold, meshBounds[i]);
-            if (gpu is not null)
-            {
-                _gpuMeshes.Add((meshes[i], gpu));
-            }
-        }
+        (_originX, _originY, _originZ) = (result.OriginX, result.OriginY, result.OriginZ);
+        _localBounds = result.LocalBounds;
+        _lastGeometryBuildTime = result.BuildTime;
 
         _hasAnyLod = _gpuMeshes.Any(pair => pair.Gpu.HasLod);
         if (!_hasAnyLod)
@@ -1070,12 +1301,24 @@ public class WcuViewport : Control
             _lodRestoreTimer?.Stop();
         }
 
-        _lastGeometryBuildTime = buildTimer.Elapsed;
-
-        if (!_hasAutoFitted)
+        if (!_localBounds.IsEmpty && (!_hasAutoFitted || _fitToViewPending))
         {
             _hasAutoFitted = true;
+            _fitToViewPending = false;
             Camera.FitToBounds(_localBounds);
+        }
+    }
+
+    private static void DisposeBuildResult(GeometryBuildResult? result)
+    {
+        if (result is null)
+        {
+            return;
+        }
+
+        foreach (var (_, gpu) in result.Meshes)
+        {
+            gpu.Dispose();
         }
     }
 
@@ -1176,7 +1419,11 @@ public class WcuViewport : Control
             gpu.IsClippable = source.IsClippable;
 
             _selectionGpu.TryGetValue(source, out var selection);
-            _renderItems.Add(new RenderItem(gpu, selection, Selection.IsPartSelected(source)));
+            var isHovered = ReferenceEquals(source, _hoverMesh);
+            _renderItems.Add(new RenderItem(
+                gpu, selection, Selection.IsPartSelected(source),
+                Hover: isHovered ? _hoverGpu : null,
+                IsPartHovered: isHovered && _hoverIsPart));
             _visibleGpus.Add(gpu);
             _visibleSources.Add(source);
         }
@@ -1313,6 +1560,9 @@ public class WcuViewport : Control
 
     private void OnMeshPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        // 可視状態・変位などの変更はホバー ID キャッシュを無効化する(spec 6.24.3)
+        _sceneVersion++;
+
         if (e.PropertyName is nameof(ViewportMesh.Positions)
             or nameof(ViewportMesh.TriangleIndices)
             or nameof(ViewportMesh.ScalarValues))
@@ -1437,6 +1687,7 @@ public class WcuViewport : Control
         // ピックモード中は十字カーソルで「選択操作中」を示す(spec 6.17.4)
         viewport.Cursor = (ViewportPickMode)e.NewValue != ViewportPickMode.None ? Cursors.Cross : null;
         viewport.CancelPicking();
+        viewport.ClearHover(); // 粒度が変わるため作り直す(次のマウス移動で再解決)
     }
 
     private void OnSelectionModelChanged(object? sender, EventArgs e)
@@ -1530,6 +1781,8 @@ public class WcuViewport : Control
 
         if (!_isOrbiting && !_isPanning)
         {
+            // ドラッグ操作中でなければホバープリハイライトを更新する(spec 6.24.3)
+            UpdateHover(e.GetPosition(this));
             return;
         }
 
@@ -1593,6 +1846,12 @@ public class WcuViewport : Control
         }
     }
 
+    protected override void OnMouseLeave(MouseEventArgs e)
+    {
+        base.OnMouseLeave(e);
+        ClearHover();
+    }
+
     /// <summary>進行中のピック操作(ラバーバンド含む)を中止して状態を戻す。</summary>
     private void CancelPicking()
     {
@@ -1625,6 +1884,181 @@ public class WcuViewport : Control
         _rubberBand.Visibility = Visibility.Visible;
     }
 
+    // ================= ホバープリハイライト(spec 6.24.3) =================
+
+    private static void OnIsHoverHighlightEnabledChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.NewValue is false)
+        {
+            ((WcuViewport)d).ClearHover();
+        }
+    }
+
+    /// <summary>
+    /// マウス移動時のホバー更新。静止シーンの ID バッファキャッシュを参照するだけなので、
+    /// メッシュ規模に依らず移動あたりのコストはほぼゼロ。キャッシュが古い(カメラ・変形・
+    /// クリップ・シーンが変わった)ときだけ ID パスを 1 回描き直す。
+    /// カメラ操作中(LOD 描画中)と視点アニメーション中は無効。
+    /// </summary>
+    private void UpdateHover(Point positionDip)
+    {
+        if (!IsHoverHighlightEnabled || PickMode == ViewportPickMode.None
+            || _lodRequested || _isAnimatingView)
+        {
+            ClearHover();
+            return;
+        }
+
+        if (!TryGetPickContext(out var viewProj, out var dpiScale) || !EnsureHoverIdCache(in viewProj))
+        {
+            ClearHover();
+            return;
+        }
+
+        var px = (int)(positionDip.X * dpiScale);
+        var py = (int)(positionDip.Y * dpiScale);
+        var hit = ViewportHover.ReadId(_hoverIdBuffer!, _hoverIdWidth, _hoverIdHeight, px, py);
+        if (hit is not { } h || h.MeshIndex >= _visibleSources.Count)
+        {
+            ClearHover();
+            return;
+        }
+
+        var mesh = _visibleSources[h.MeshIndex];
+        switch (PickMode)
+        {
+            case ViewportPickMode.Part:
+                SetHover(mesh, -1, -1, isPart: true);
+                break;
+
+            case ViewportPickMode.Face:
+                SetHover(mesh, h.TriangleIndex, -1, isPart: false);
+                break;
+
+            case ViewportPickMode.Node:
+            case ViewportPickMode.Probe:
+                // Probe はクリックで注釈が立つ最近傍節点をプレビューする
+                var node = ViewportPicking.FindNearestNodeOnTriangle(
+                    mesh, h.TriangleIndex, _originX, _originY, _originZ,
+                    in viewProj, _renderer!.Width, _renderer.Height, new Vector2(px, py),
+                    _lastEffectiveDeformationScale);
+                if (node is { } n)
+                {
+                    SetHover(mesh, -1, n, isPart: false);
+                }
+                else
+                {
+                    ClearHover();
+                }
+
+                break;
+        }
+    }
+
+    /// <summary>
+    /// ホバー用 ID キャッシュを最新化する。描画状態スタンプ(カメラ行列・変形スケール・
+    /// クリップ平面・ピクセルサイズ・シーン版数)が一致すればキャプチャ済みをそのまま使う。
+    /// </summary>
+    private bool EnsureHoverIdCache(in Matrix4x4 viewProj)
+    {
+        var deformScale = _lastEffectiveDeformationScale;
+        var clip = GetCurrentClipPlane();
+        if (_hoverIdValid
+            && _hoverIdViewProj == viewProj
+            && _hoverIdDeformScale == deformScale
+            && _hoverIdClip == clip
+            && _hoverIdWidth == _renderer!.Width
+            && _hoverIdHeight == _renderer.Height
+            && _hoverIdSceneVersion == _sceneVersion)
+        {
+            return true;
+        }
+
+        if (!_renderer!.CaptureIdBuffer(_visibleGpus, in viewProj, deformScale, clip, ref _hoverIdBuffer))
+        {
+            _hoverIdValid = false;
+            return false;
+        }
+
+        _hoverIdValid = true;
+        _hoverIdViewProj = viewProj;
+        _hoverIdDeformScale = deformScale;
+        _hoverIdClip = clip;
+        _hoverIdWidth = _renderer.Width;
+        _hoverIdHeight = _renderer.Height;
+        _hoverIdSceneVersion = _sceneVersion;
+        return true;
+    }
+
+    /// <summary>
+    /// ホバー ID キャッシュが現在の描画状態と一致するときだけピクセルを読み出す
+    /// (クリックピックの流用、spec 6.24.3)。false なら GPU の PickPixel にフォールバック。
+    /// </summary>
+    private bool TryReadCachedId(int px, int py, in Matrix4x4 viewProj, out (int MeshIndex, int TriangleIndex)? hit)
+    {
+        hit = null;
+        if (!_hoverIdValid || _hoverIdBuffer is null
+            || _hoverIdViewProj != viewProj
+            || _hoverIdDeformScale != _lastEffectiveDeformationScale
+            || _hoverIdClip != GetCurrentClipPlane()
+            || _hoverIdWidth != _renderer!.Width
+            || _hoverIdHeight != _renderer.Height
+            || _hoverIdSceneVersion != _sceneVersion)
+        {
+            return false;
+        }
+
+        hit = ViewportHover.ReadId(_hoverIdBuffer, _hoverIdWidth, _hoverIdHeight, px, py);
+        return true;
+    }
+
+    private void SetHover(ViewportMesh mesh, int triangle, int node, bool isPart)
+    {
+        if (ReferenceEquals(mesh, _hoverMesh)
+            && triangle == _hoverTriangle && node == _hoverNode && isPart == _hoverIsPart)
+        {
+            return;
+        }
+
+        _hoverGpu?.Dispose();
+        _hoverGpu = null;
+        _hoverMesh = mesh;
+        _hoverTriangle = triangle;
+        _hoverNode = node;
+        _hoverIsPart = isPart;
+
+        if (!isPart && _renderer is not null)
+        {
+            _hoverGpu = _renderer.CreateSelectionMesh(
+                mesh,
+                triangle >= 0 ? [triangle] : [],
+                node >= 0 ? [node] : [],
+                _originX, _originY, _originZ);
+        }
+
+        HoverInfo = new ViewportHoverInfo(mesh, triangle, node, isPart);
+        HoverChanged?.Invoke(this, EventArgs.Empty);
+        InvalidateViewport();
+    }
+
+    private void ClearHover()
+    {
+        if (_hoverMesh is null && HoverInfo is null)
+        {
+            return;
+        }
+
+        _hoverGpu?.Dispose();
+        _hoverGpu = null;
+        _hoverMesh = null;
+        _hoverTriangle = -1;
+        _hoverNode = -1;
+        _hoverIsPart = false;
+        HoverInfo = null;
+        HoverChanged?.Invoke(this, EventArgs.Empty);
+        InvalidateViewport();
+    }
+
     // ================= ピッキング実行(spec 6.17) =================
 
     /// <summary>
@@ -1640,8 +2074,13 @@ public class WcuViewport : Control
 
         var px = (int)(positionDip.X * dpiScale);
         var py = (int)(positionDip.Y * dpiScale);
-        var hit = _renderer!.PickPixel(
-            _visibleGpus, in viewProj, px, py, _lastEffectiveDeformationScale, GetCurrentClipPlane());
+
+        // ホバーキャッシュが有効ならそれを流用し、GPU の ID パスを省く(spec 6.24.3)
+        if (!TryReadCachedId(px, py, in viewProj, out var hit))
+        {
+            hit = _renderer!.PickPixel(
+                _visibleGpus, in viewProj, px, py, _lastEffectiveDeformationScale, GetCurrentClipPlane());
+        }
 
         Selection.BeginUpdate();
         try
@@ -1687,7 +2126,7 @@ public class WcuViewport : Control
                     var cursor = new Vector2(px, py);
                     var node = ViewportPicking.FindNearestNodeOnTriangle(
                         mesh, h.TriangleIndex, _originX, _originY, _originZ,
-                        in viewProj, _renderer.Width, _renderer.Height, cursor,
+                        in viewProj, _renderer!.Width, _renderer.Height, cursor,
                         _lastEffectiveDeformationScale);
                     if (node is { } n)
                     {
@@ -1710,7 +2149,11 @@ public class WcuViewport : Control
         }
     }
 
-    /// <summary>矩形(ラバーバンド)選択。見えているものだけが対象(spec 6.17.4)。additive=true(Ctrl)は追加。</summary>
+    /// <summary>
+    /// 矩形(ラバーバンド)選択。既定は見えているものだけが対象(spec 6.17.4)、
+    /// <see cref="RubberBandSelectionMode"/> = Through では隠面も含む(spec 6.24.4)。
+    /// additive=true(Ctrl)は追加。
+    /// </summary>
     private void SelectInRectangle(Point startDip, Point endDip, bool additive)
     {
         if (!TryGetPickContext(out var viewProj, out var dpiScale))
@@ -1722,6 +2165,12 @@ public class WcuViewport : Control
         var y0 = (int)(Math.Min(startDip.Y, endDip.Y) * dpiScale);
         var x1 = (int)Math.Ceiling(Math.Max(startDip.X, endDip.X) * dpiScale);
         var y1 = (int)Math.Ceiling(Math.Max(startDip.Y, endDip.Y) * dpiScale);
+
+        if (RubberBandSelectionMode == ViewportRubberBandSelectionMode.Through)
+        {
+            SelectInRectangleThrough(in viewProj, new Vector2(x0, y0), new Vector2(x1, y1), additive);
+            return;
+        }
 
         var region = _renderer!.PickRegion(
             _visibleGpus, in viewProj, x0, y0, x1 - x0, y1 - y0, _lastEffectiveDeformationScale,
@@ -1770,6 +2219,219 @@ public class WcuViewport : Control
         }
     }
 
+    // ================= 貫通矩形選択(spec 6.24.4) =================
+
+    /// <summary>貫通選択の CPU 並列判定で 1 タスクが受け持つ三角形数。</summary>
+    private const int ThroughSelectBlockSize = 65_536;
+
+    /// <summary>
+    /// 貫通矩形選択。GPU の ID 読み出し(可視のみ)を使わず、チャンク AABB の粗篩で
+    /// 対象範囲を絞ってから、変形適用後の座標のスクリーン射影を CPU 並列で判定する。
+    /// 断面クリップされた要素は除外する(既存ピックと整合)。
+    /// </summary>
+    private void SelectInRectangleThrough(
+        in Matrix4x4 viewProj, Vector2 rectMin, Vector2 rectMax, bool additive)
+    {
+        var width = (double)_renderer!.Width;
+        var height = (double)_renderer.Height;
+        var deformScale = (double)_lastEffectiveDeformationScale;
+        var clipCoefficients = GetCurrentClipPlane();
+        var viewProjLocal = viewProj; // ラムダキャプチャ用コピー
+
+        Selection.BeginUpdate();
+        try
+        {
+            if (!additive)
+            {
+                Selection.Clear();
+            }
+
+            for (var i = 0; i < _visibleSources.Count; i++)
+            {
+                var mesh = _visibleSources[i];
+                var gpu = _visibleGpus[i];
+                var clip = mesh.IsClippable ? clipCoefficients : ViewportSection.DisabledClip;
+                var expand = gpu.MaxDisplacementMagnitude * MathF.Abs((float)deformScale);
+
+                // チャンク AABB 粗篩: スクリーン射影境界が矩形にかからないチャンクは飛ばす
+                var candidates = new List<GpuMeshChunk>();
+                foreach (var chunk in gpu.Chunks)
+                {
+                    if (ViewportRectSelect.ScreenBoundsMayOverlapRect(
+                        chunk.BoundsMin, chunk.BoundsMax, expand,
+                        in viewProjLocal, width, height, rectMin, rectMax))
+                    {
+                        candidates.Add(chunk);
+                    }
+                }
+
+                if (candidates.Count == 0)
+                {
+                    continue;
+                }
+
+                switch (PickMode)
+                {
+                    case ViewportPickMode.Part:
+                        if (AnyTriangleInRectThrough(
+                            mesh, candidates, deformScale, in viewProjLocal, width, height,
+                            rectMin, rectMax, clip))
+                        {
+                            Selection.AddPart(mesh);
+                        }
+
+                        break;
+
+                    case ViewportPickMode.Face:
+                        var faces = CollectTrianglesThrough(
+                            mesh, candidates, deformScale, in viewProjLocal, width, height,
+                            rectMin, rectMax, clip);
+                        if (faces.Count > 0)
+                        {
+                            Selection.AddFaces(mesh, faces);
+                        }
+
+                        break;
+
+                    case ViewportPickMode.Node:
+                        var nodes = CollectNodesThrough(
+                            mesh, candidates, deformScale, in viewProjLocal, width, height,
+                            rectMin, rectMax, clip);
+                        if (nodes.Count > 0)
+                        {
+                            Selection.AddNodes(mesh, nodes);
+                        }
+
+                        break;
+                }
+            }
+        }
+        finally
+        {
+            Selection.EndUpdate();
+        }
+    }
+
+    /// <summary>チャンクのグローバル三角形範囲を並列タスク向けのブロック列に分割する。</summary>
+    private static List<(int Start, int Count)> BuildTriangleBlocks(IReadOnlyList<GpuMeshChunk> chunks)
+    {
+        var blocks = new List<(int Start, int Count)>();
+        foreach (var chunk in chunks)
+        {
+            var start = (int)chunk.TriangleBase;
+            var count = (int)chunk.TriangleIndexCount / 3;
+            for (var offset = 0; offset < count; offset += ThroughSelectBlockSize)
+            {
+                blocks.Add((start + offset, Math.Min(ThroughSelectBlockSize, count - offset)));
+            }
+        }
+
+        return blocks;
+    }
+
+    private bool AnyTriangleInRectThrough(
+        ViewportMesh mesh, IReadOnlyList<GpuMeshChunk> chunks, double deformScale,
+        in Matrix4x4 viewProj, double width, double height,
+        Vector2 rectMin, Vector2 rectMax, Vector4 clip)
+    {
+        var viewProjLocal = viewProj;
+        var found = 0;
+        Parallel.ForEach(BuildTriangleBlocks(chunks), (block, state) =>
+        {
+            for (var t = block.Start; t < block.Start + block.Count; t++)
+            {
+                if (state.IsStopped)
+                {
+                    return;
+                }
+
+                if (ViewportRectSelect.IsTriangleInRect(
+                    mesh.Positions, mesh.TriangleIndices, mesh.Displacements, deformScale, t,
+                    _originX, _originY, _originZ, in viewProjLocal, width, height,
+                    rectMin, rectMax, clip))
+                {
+                    Interlocked.Exchange(ref found, 1);
+                    state.Stop();
+                    return;
+                }
+            }
+        });
+
+        return found == 1;
+    }
+
+    private List<int> CollectTrianglesThrough(
+        ViewportMesh mesh, IReadOnlyList<GpuMeshChunk> chunks, double deformScale,
+        in Matrix4x4 viewProj, double width, double height,
+        Vector2 rectMin, Vector2 rectMax, Vector4 clip)
+    {
+        var viewProjLocal = viewProj;
+        var results = new List<int>();
+        var gate = new object();
+        Parallel.ForEach(
+            BuildTriangleBlocks(chunks),
+            () => new List<int>(),
+            (block, _, local) =>
+            {
+                ViewportRectSelect.CollectTrianglesInRect(
+                    mesh.Positions, mesh.TriangleIndices, mesh.Displacements, deformScale,
+                    _originX, _originY, _originZ, in viewProjLocal, width, height,
+                    rectMin, rectMax, clip, block.Start, block.Count, local);
+                return local;
+            },
+            local =>
+            {
+                lock (gate)
+                {
+                    results.AddRange(local);
+                }
+            });
+
+        return results;
+    }
+
+    private HashSet<int> CollectNodesThrough(
+        ViewportMesh mesh, IReadOnlyList<GpuMeshChunk> chunks, double deformScale,
+        in Matrix4x4 viewProj, double width, double height,
+        Vector2 rectMin, Vector2 rectMax, Vector4 clip)
+    {
+        var viewProjLocal = viewProj;
+        var results = new HashSet<int>();
+        var gate = new object();
+
+        // チャンク単位の並列(チャンク境界の重複頂点は HashSet が吸収する)
+        Parallel.ForEach(
+            chunks,
+            () => new List<int>(),
+            (chunk, _, local) =>
+            {
+                foreach (var node in chunk.GlobalVertices)
+                {
+                    if (ViewportRectSelect.IsNodeInRect(
+                        mesh.Positions, mesh.Displacements, deformScale, node,
+                        _originX, _originY, _originZ, in viewProjLocal, width, height,
+                        rectMin, rectMax, clip))
+                    {
+                        local.Add(node);
+                    }
+                }
+
+                return local;
+            },
+            local =>
+            {
+                lock (gate)
+                {
+                    foreach (var node in local)
+                    {
+                        results.Add(node);
+                    }
+                }
+            });
+
+        return results;
+    }
+
     // ================= プローブ+注釈(spec 6.20) =================
 
     /// <summary>
@@ -1786,8 +2448,14 @@ public class WcuViewport : Control
 
         var px = (int)(positionDip.X * dpiScale);
         var py = (int)(positionDip.Y * dpiScale);
-        var hit = _renderer!.PickPixel(
-            _visibleGpus, in viewProj, px, py, _lastEffectiveDeformationScale, GetCurrentClipPlane());
+
+        // ホバーキャッシュが有効ならそれを流用し、GPU の ID パスを省く(spec 6.24.3)
+        if (!TryReadCachedId(px, py, in viewProj, out var hit))
+        {
+            hit = _renderer!.PickPixel(
+                _visibleGpus, in viewProj, px, py, _lastEffectiveDeformationScale, GetCurrentClipPlane());
+        }
+
         if (hit is not { } h || h.MeshIndex >= _visibleSources.Count)
         {
             return;
@@ -1795,7 +2463,7 @@ public class WcuViewport : Control
 
         var result = ViewportProbing.Probe(
             _visibleSources[h.MeshIndex], h.TriangleIndex, new Vector2(px, py), in viewProj,
-            _renderer.Width, _renderer.Height, _originX, _originY, _originZ,
+            _renderer!.Width, _renderer.Height, _originX, _originY, _originZ,
             _lastEffectiveDeformationScale);
         if (result is null)
         {
@@ -2008,7 +2676,7 @@ public class WcuViewport : Control
             return false;
         }
 
-        EnsureGeometry();
+        // 非同期構築中は旧シーンに対してピックする(spec 6.24.2)
         BuildRenderLists();
         if (_visibleGpus.Count == 0)
         {
@@ -2143,6 +2811,13 @@ public class WcuViewport : Control
 
     private void ReleaseRenderer()
     {
+        // 進行中の非同期構築を破棄する(完了しても世代不一致で結果は捨てられる)
+        _buildCoordinator.CancelAll();
+        SetValue(IsGeometryBuildingPropertyKey, false);
+        ClearHover();
+        _hoverIdBuffer = null;
+        _hoverIdValid = false;
+
         foreach (var (_, gpu) in _gpuMeshes)
         {
             gpu.Dispose();

@@ -41,6 +41,10 @@ public partial class ViewportBenchmarkPage : UserControl
         Viewport.ColorScale = _colorScale;
         Viewport.Selection.Changed += OnSelectionChanged;
 
+        // 非同期構築の進捗表示(spec 6.24.2)。構築中も旧シーンの表示・操作は継続する
+        Viewport.GeometryBuildProgressChanged += OnBuildProgressChanged;
+        Viewport.GeometryBuildCompleted += OnBuildCompleted;
+
         // 構築は次の描画フレームで走る(遅延構築)ため、統計はタイマーで追従させる。
         // 回転アニメ中は CompositionTarget.Rendering が毎フレーム発火し Background だと
         // 飢餓するため、Normal 優先度で LOD 中も統計が更新されるようにする
@@ -147,6 +151,25 @@ public partial class ViewportBenchmarkPage : UserControl
         _meshes.Clear();
         _meshes.Add(mesh);
         Viewport.FitToView();
+    }
+
+    // ================= 非同期構築の進捗(spec 6.24.2) =================
+
+    private void OnBuildProgressChanged(object? sender, ViewportBuildProgressEventArgs e)
+    {
+        BuildProgress.Value = e.Progress;
+        BuildText.Text = string.Create(
+            CultureInfo.InvariantCulture, $"構築中: {e.Stage} {e.Progress:P0}");
+    }
+
+    private void OnBuildCompleted(object? sender, EventArgs e)
+    {
+        BuildProgress.Value = 1.0;
+        var stats = Viewport.GetStatistics();
+        BuildText.Text = string.Create(
+            CultureInfo.InvariantCulture,
+            $"構築完了: {stats.LastGeometryBuildTime.TotalMilliseconds:N0} ms(バックグラウンド構築、旧シーン表示継続)");
+        UpdateStats();
     }
 
     // ================= 統計 / FPS =================

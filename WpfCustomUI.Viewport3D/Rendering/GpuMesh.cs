@@ -156,10 +156,13 @@ internal sealed unsafe class GpuMesh : IDisposable
     /// <summary>
     /// メッシュモデルから GPU リソースを構築する。座標は origin(シーン中心)で再センタリング済みの
     /// float に変換され、法線はチャンク分割前にメッシュ全体で計算する(境界の陰影継ぎ目なし)。
+    /// バックグラウンドスレッドから呼べる(ID3D11Device はフリースレッド、spec 6.24.2)。
     /// </summary>
     /// <param name="edgeExtractionLimit">三角形数がこれを超えるメッシュはエッジ抽出をスキップ(spec 6.22.4)。</param>
     /// <param name="interactiveLodThreshold">三角形数がこれを超えるメッシュは操作中 LOD を構築(spec 6.23.3)。</param>
     /// <param name="meshBounds">メッシュの境界ボックス(LOD のグリッド定義に使用)。</param>
+    /// <param name="cancellationToken">構築の途中破棄(チャンク境界で確認、spec 6.24.2)。</param>
+    /// <param name="progress">進捗コールバック(0〜1、チャンク完了毎)。呼び出しスレッドは構築スレッド。</param>
     public static GpuMesh? Create(
         ComPtr<ID3D11Device> device,
         ViewportMesh mesh,
@@ -168,7 +171,9 @@ internal sealed unsafe class GpuMesh : IDisposable
         int interactiveLodThreshold = int.MaxValue,
         Bounds3D meshBounds = default,
         int maxVerticesPerChunk = ViewportChunking.DefaultMaxVerticesPerChunk,
-        int maxTrianglesPerChunk = ViewportChunking.DefaultMaxTrianglesPerChunk)
+        int maxTrianglesPerChunk = ViewportChunking.DefaultMaxTrianglesPerChunk,
+        CancellationToken cancellationToken = default,
+        Action<double>? progress = null)
     {
         var vertexCount = mesh.VertexCount;
         var triangles = mesh.TriangleIndices;
@@ -194,15 +199,21 @@ internal sealed unsafe class GpuMesh : IDisposable
 
         try
         {
+            // 進捗の重み: LOD ありは本体 0.7 / LOD 0.3(クラスタリング+チャンク構築ぶん)
+            var buildLod = triangleCount > interactiveLodThreshold && !meshBounds.IsEmpty;
+            var mainWeight = buildLod ? 0.7 : 1.0;
+
             BuildChunkSet(
                 device, result._chunks, mesh.Positions, triangles, scalars, displacements,
                 displacementSourceMap: null, originX, originY, originZ, extractEdges,
-                maxVerticesPerChunk, maxTrianglesPerChunk);
+                maxVerticesPerChunk, maxTrianglesPerChunk,
+                cancellationToken, p => progress?.Invoke(p * mainWeight));
 
             // 操作中 LOD(spec 6.23.3)。グリッドクラスタリングで約 1/20 に間引いたメッシュを
             // 同じチャンクパイプラインで構築する(エッジ抽出なし)
-            if (triangleCount > interactiveLodThreshold && !meshBounds.IsEmpty)
+            if (buildLod)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var lod = ViewportLod.Build(mesh.Positions, triangles, scalars, meshBounds);
                 if (lod is not null)
                 {
@@ -215,12 +226,15 @@ internal sealed unsafe class GpuMesh : IDisposable
                         device, result._lodChunks, lodPositions, lod.TriangleIndices,
                         lod.ScalarValues, lodDisplacements,
                         displacementSourceMap: null, originX, originY, originZ, extractEdges: false,
-                        maxVerticesPerChunk, maxTrianglesPerChunk);
+                        maxVerticesPerChunk, maxTrianglesPerChunk,
+                        cancellationToken, p => progress?.Invoke(mainWeight + p * (1.0 - mainWeight)));
 
                     result._lodRepresentativeNodes = lod.RepresentativeNodes;
                     result.LodTriangleCount = lod.TriangleCount;
                 }
             }
+
+            progress?.Invoke(1.0);
         }
         catch
         {
@@ -242,9 +256,12 @@ internal sealed unsafe class GpuMesh : IDisposable
         double[] positions, int[] triangles, double[]? scalars, double[]? displacements,
         int[]? displacementSourceMap,
         double originX, double originY, double originZ,
-        bool extractEdges, int maxVerticesPerChunk, int maxTrianglesPerChunk)
+        bool extractEdges, int maxVerticesPerChunk, int maxTrianglesPerChunk,
+        CancellationToken cancellationToken = default, Action<double>? progress = null)
     {
         var vertexCount = positions.Length / 3;
+
+        cancellationToken.ThrowIfCancellationRequested();
 
         // 法線: フルサイズ float で累積 → octahedral uint(4B/頂点)へ即圧縮して float を解放
         uint[] octNormals;
@@ -260,8 +277,10 @@ internal sealed unsafe class GpuMesh : IDisposable
 
         // チャンク逐次×チャンク内並列。中間配列(インターリーブ/変位/ローカルインデックス)は
         // チャンク 1 個分しか同時に存在しないため、ピークメモリが全体サイズに比例しない
+        var builtChunks = 0;
         foreach (var boundary in boundaries)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var (localTriangles, globalVertices) = ViewportChunking.BuildChunkData(triangles, boundary, remap);
             var chunk = new GpuMeshChunk(globalVertices, (uint)boundary.TriangleStart)
             {
@@ -326,6 +345,8 @@ internal sealed unsafe class GpuMesh : IDisposable
             }
 
             target.Add(chunk);
+            builtChunks++;
+            progress?.Invoke((double)builtChunks / boundaries.Count);
         }
     }
 

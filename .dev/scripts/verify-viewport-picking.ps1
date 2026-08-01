@@ -12,6 +12,45 @@ public class Win32 {
     [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
 }
 "@
+Add-Type -ReferencedAssemblies System.Drawing @"
+using System;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
+public static class PixelDiff {
+    public static int Count(string pathA, string pathB, int tolerance) {
+        using (var a = new Bitmap(pathA))
+        using (var b = new Bitmap(pathB)) {
+            int w = Math.Min(a.Width, b.Width), h = Math.Min(a.Height, b.Height);
+            var rect = new Rectangle(0, 0, w, h);
+            var da = a.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+            var db = b.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+            try {
+                var bytesA = new byte[da.Stride * h];
+                var bytesB = new byte[db.Stride * h];
+                Marshal.Copy(da.Scan0, bytesA, 0, bytesA.Length);
+                Marshal.Copy(db.Scan0, bytesB, 0, bytesB.Length);
+                int count = 0;
+                for (int y = 0; y < h; y++) {
+                    int rowA = y * da.Stride, rowB = y * db.Stride;
+                    for (int x = 0; x < w; x++) {
+                        int ia = rowA + x * 4, ib = rowB + x * 4;
+                        if (Math.Abs(bytesA[ia] - bytesB[ib]) > tolerance
+                            || Math.Abs(bytesA[ia + 1] - bytesB[ib + 1]) > tolerance
+                            || Math.Abs(bytesA[ia + 2] - bytesB[ib + 2]) > tolerance) {
+                            count++;
+                        }
+                    }
+                }
+                return count;
+            } finally {
+                a.UnlockBits(da);
+                b.UnlockBits(db);
+            }
+        }
+    }
+}
+"@
 
 function Capture-Screen($x, $y, $w, $h, $path) {
     $b = New-Object System.Drawing.Bitmap($w, $h)
@@ -167,6 +206,112 @@ Left-Click $px $py
 Invoke-Button (Find-ByName $root $LblClear)
 Start-Sleep -Milliseconds 300
 Write-Output ("clear button: " + (Get-Summary))
+
+# ---- 7.5 ホバープリハイライト(Phase 24、spec 6.24.3) ----
+$hoverText = Find-ById $root 'HoverText'
+function Get-Hover { $hoverText.Current.Name }
+function Move-Cursor($x, $y) {
+    [Win32]::SetCursorPos($x, $y) | Out-Null
+    Start-Sleep -Milliseconds 150
+    # 同一座標では WM_MOUSEMOVE が出ないことがあるため 1px 揺らす
+    [Win32]::SetCursorPos($x + 1, $y) | Out-Null
+    Start-Sleep -Milliseconds 450
+}
+
+# 面モードでモデル上へカーソル → Hover: Face N
+Select-Radio (Find-ByName $root $LblFace)
+Start-Sleep -Milliseconds 300
+Move-Cursor $px $py
+$hv = Get-Hover
+if ($hv -match '^Hover: Face \d+$') { Write-Output ("hover face OK: " + $hv) }
+else { Write-Output ("FAIL hover face: " + $hv) }
+Capture-Screen 0 0 1280 960 (Join-Path $outDir 'pick-hover-face.png')
+
+# ホバーのピクセル差分: ホバーあり vs 背景ホバーなしで見た目が変わる
+$hoverShot = Join-Path $outDir 'hover-on.png'
+Capture-Screen ([int]$r.X) ([int]$r.Y) ([int]$r.Width) ([int]$r.Height) $hoverShot
+
+# 背景(左下)へ → Hover: -
+Move-Cursor ([int]($r.X + 15)) ([int]($r.Y + $r.Height - 15))
+$hv = Get-Hover
+if ($hv -eq 'Hover: -') { Write-Output 'hover background OK' }
+else { Write-Output ("FAIL hover background: " + $hv) }
+$hoverOffShot = Join-Path $outDir 'hover-off.png'
+Capture-Screen ([int]$r.X) ([int]$r.Y) ([int]$r.Width) ([int]$r.Height) $hoverOffShot
+$diff = [PixelDiff]::Count($hoverShot, $hoverOffShot, 8)
+if ($diff -gt 0) { Write-Output ("hover pixel diff OK: " + $diff) }
+else { Write-Output 'FAIL: hover made no pixel difference' }
+
+# 節点モード → Hover: Node N
+Select-Radio (Find-ByName $root $LblNode)
+Start-Sleep -Milliseconds 300
+Move-Cursor $px $py
+$hv = Get-Hover
+if ($hv -match '^Hover: Node \d+$') { Write-Output ("hover node OK: " + $hv) }
+else { Write-Output ("FAIL hover node: " + $hv) }
+
+# パーツモード → Hover: Part 名前
+Select-Radio (Find-ByName $root $LblPart)
+Start-Sleep -Milliseconds 300
+Move-Cursor $px $py
+$hv = Get-Hover
+if ($hv -match '^Hover: Part ') { Write-Output ("hover part OK: " + $hv) }
+else { Write-Output ("FAIL hover part: " + $hv) }
+
+# トグル OFF → クリア+以後更新されない
+$hoverToggle = Find-ById $root 'HoverToggle'
+$hoverToggle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle()
+Start-Sleep -Milliseconds 300
+Move-Cursor $px $py
+$hv = Get-Hover
+if ($hv -eq 'Hover: -') { Write-Output 'hover disabled OK' }
+else { Write-Output ("FAIL hover disabled: " + $hv) }
+$hoverToggle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle()
+Start-Sleep -Milliseconds 300
+
+# ---- 7.6 貫通矩形選択(Phase 24、spec 6.24.4) ----
+# 上視点で節点矩形選択: 可視のみ(平板に隠れた/重なったボス下面の節点は入らない)と
+# 貫通(全節点が対象)で、貫通 > 可視 になることを確認する
+Invoke-Button (Find-ByName $root $LblTop)
+Start-Sleep -Milliseconds 700
+Select-Radio (Find-ByName $root $LblNode)
+Start-Sleep -Milliseconds 300
+
+$bx0 = [int]($cx - $r.Width * 0.15); $by0 = [int]($cy - $r.Height * 0.15)
+$bx1 = [int]($cx + $r.Width * 0.15); $by1 = [int]($cy + $r.Height * 0.15)
+
+Left-Drag $bx0 $by0 $bx1 $by1
+$visibleSummary = Get-Summary
+if ($visibleSummary -match 'Nodes: (\d+)') { $visibleNodes = [int]$Matches[1] } else { $visibleNodes = -1 }
+Write-Output ("visible box: " + $visibleSummary)
+
+$throughToggle = Find-ById $root 'ThroughToggle'
+$throughToggle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle()
+Start-Sleep -Milliseconds 300
+Left-Drag $bx0 $by0 $bx1 $by1
+$throughSummary = Get-Summary
+if ($throughSummary -match 'Nodes: (\d+)') { $throughNodes = [int]$Matches[1] } else { $throughNodes = -1 }
+Write-Output ("through box: " + $throughSummary)
+if ($throughNodes -gt $visibleNodes -and $visibleNodes -gt 0) {
+    Write-Output ("through > visible OK: $throughNodes > $visibleNodes")
+} else {
+    Write-Output ("FAIL through selection: through=$throughNodes visible=$visibleNodes")
+}
+Capture-Screen 0 0 1280 960 (Join-Path $outDir 'pick-through.png')
+
+# 面モードでも貫通が可視以上になること(ボス裏面が加算される)
+Select-Radio (Find-ByName $root $LblFace)
+Start-Sleep -Milliseconds 300
+Left-Drag $bx0 $by0 $bx1 $by1
+Write-Output ("through face box: " + (Get-Summary))
+
+# 貫通トグルを戻し、選択をクリア
+$throughToggle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle()
+Start-Sleep -Milliseconds 200
+Invoke-Button (Find-ByName $root $LblClear)
+Start-Sleep -Milliseconds 300
+Invoke-Button (Find-ByName $root $LblIso)
+Start-Sleep -Milliseconds 700
 
 # ---- 8. 標準視点ボタン(補間アニメーション込み) ----
 Invoke-Button (Find-ByName $root $LblFront)
