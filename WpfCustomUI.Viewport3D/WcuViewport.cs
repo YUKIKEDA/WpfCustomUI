@@ -155,6 +155,12 @@ public class WcuViewport : Control
             new PropertyMetadata(5_000_000, OnGeometryOptionChanged),
             v => (int)v >= 0);
 
+    public static readonly DependencyProperty InteractiveLodThresholdProperty =
+        DependencyProperty.Register(
+            nameof(InteractiveLodThreshold), typeof(int), typeof(WcuViewport),
+            new PropertyMetadata(5_000_000, OnGeometryOptionChanged),
+            v => (int)v >= 0);
+
     private readonly List<(ViewportMesh Source, GpuMesh Gpu)> _gpuMeshes = [];
     private readonly HashSet<ViewportMesh> _displacementDirtyMeshes = [];
     private readonly List<RenderItem> _renderItems = [];
@@ -210,6 +216,13 @@ public class WcuViewport : Control
     private TimeSpan _lastGeometryBuildTime;
     private TimeSpan _lastRenderTime;
 
+    // 操作中 LOD(spec 6.23.3): カメラ操作・振動アニメの間は LOD チャンクで描画し、
+    // 操作が止まって一定時間後にフル解像度へ戻す
+    private static readonly TimeSpan LodRestoreDelay = TimeSpan.FromMilliseconds(300);
+    private bool _lodRequested;
+    private bool _hasAnyLod;
+    private DispatcherTimer? _lodRestoreTimer;
+
     // 軸トライアッド+ラバーバンドの WPF オーバーレイ要素
     private readonly Line[] _triadLines = new Line[3];
     private readonly TextBlock[] _triadLabels = new TextBlock[3];
@@ -229,7 +242,12 @@ public class WcuViewport : Control
     public WcuViewport()
     {
         Camera = new ViewportCamera();
-        Camera.Changed += (_, _) => InvalidateViewport();
+        Camera.Changed += (_, _) =>
+        {
+            // カメラ操作(回転/パン/ズーム/視点アニメ)は操作中 LOD の発動条件(spec 6.23.3)
+            NotifyInteractiveChange();
+            InvalidateViewport();
+        };
 
         Selection = new ViewportSelection();
         Selection.Changed += OnSelectionModelChanged;
@@ -465,6 +483,20 @@ public class WcuViewport : Control
     }
 
     /// <summary>
+    /// 操作中 LOD を構築する三角形数の閾値(spec 6.23.3、既定 500万)。超過するメッシュは
+    /// グリッドクラスタリングで約 1/20 に間引いた LOD メッシュをロード時に併せて構築し、
+    /// カメラ操作(回転/パン/ズーム/視点アニメ)と振動アニメーションの間は LOD で描画する。
+    /// 操作が止まると自動でフル解像度に戻る。LOD 中はエッジ/グリフ/非変形重畳が非表示になるが、
+    /// コンター・変形・断面カットは LOD にも適用される。ピック/プローブ/選択は常にフルメッシュ。
+    /// int.MaxValue で無効(常にフル描画)。
+    /// </summary>
+    public int InteractiveLodThreshold
+    {
+        get => (int)GetValue(InteractiveLodThresholdProperty);
+        set => SetValue(InteractiveLodThresholdProperty, value);
+    }
+
+    /// <summary>
     /// 現在のシーンの統計スナップショットを返す(spec 6.22.5)。
     /// 用途: アプリのステータスバー表示・ベンチ計測・性能回帰の検証。
     /// 頻繁に変わる値のため DP ではなくメソッド(バインディング更新が描画毎に走るのを避ける)。
@@ -474,12 +506,14 @@ public class WcuViewport : Control
     {
         long triangles = 0;
         long vertices = 0;
+        long lodTriangles = 0;
         var chunks = 0;
         var edgeSkipped = 0;
         foreach (var (_, gpu) in _gpuMeshes)
         {
             triangles += gpu.TriangleCount;
             vertices += gpu.VertexCount;
+            lodTriangles += gpu.LodTriangleCount;
             chunks += gpu.Chunks.Count;
             if (gpu.EdgesSkipped)
             {
@@ -489,7 +523,45 @@ public class WcuViewport : Control
 
         return new ViewportStatistics(
             triangles, vertices, _gpuMeshes.Count, chunks, edgeSkipped,
+            lodTriangles,
+            _renderer?.LastFrameUsedLod ?? false,
+            _renderer?.LastDrawnChunkCount ?? 0,
             _lastGeometryBuildTime, _lastRenderTime);
+    }
+
+    // ================= 操作中 LOD(spec 6.23.3) =================
+
+    /// <summary>
+    /// カメラ操作・振動アニメーションが起きたことを通知する。LOD を持つメッシュがあるときは
+    /// LOD 描画へ切り替え、操作が <see cref="LodRestoreDelay"/> の間止まったら
+    /// フル解像度の再描画を予約する。
+    /// </summary>
+    private void NotifyInteractiveChange()
+    {
+        if (!_hasAnyLod)
+        {
+            return;
+        }
+
+        _lodRequested = true;
+
+        if (_lodRestoreTimer is null)
+        {
+            _lodRestoreTimer = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = LodRestoreDelay,
+            };
+            _lodRestoreTimer.Tick += (_, _) =>
+            {
+                _lodRestoreTimer!.Stop();
+                _lodRequested = false;
+                InvalidateViewport(); // フル解像度で描き直す
+            };
+        }
+
+        // 操作が続く限りタイマーを巻き戻す(最後の操作から一定時間後に復帰)
+        _lodRestoreTimer.Stop();
+        _lodRestoreTimer.Start();
     }
 
     /// <summary>
@@ -623,7 +695,12 @@ public class WcuViewport : Control
         InvalidateViewport();
     }
 
-    private void OnDeformationAnimationTick(object? sender, EventArgs e) => InvalidateViewport();
+    private void OnDeformationAnimationTick(object? sender, EventArgs e)
+    {
+        // 振動アニメは毎フレーム描画になるため、大規模メッシュでは LOD で描く(spec 6.23.3)
+        NotifyInteractiveChange();
+        InvalidateViewport();
+    }
 
     /// <summary>現在の実効グリフスケール(ShowGlyphs=false は 0 = 描画スキップ)。</summary>
     private float GetEffectiveGlyphScale() => ShowGlyphs ? (float)GlyphScale : 0.0f;
@@ -730,6 +807,8 @@ public class WcuViewport : Control
         StopViewAnimation();
         UpdateDeformationAnimation();
         CancelPicking();
+        _lodRestoreTimer?.Stop();
+        _lodRequested = false;
         ReleaseRenderer();
     }
 
@@ -872,7 +951,8 @@ public class WcuViewport : Control
                 highlightColor, nodeColor, pointSize,
                 _lastEffectiveDeformationScale, GetEffectiveGlyphScale(),
                 ShowUndeformedWireframe, ToVector4(edgeColor, 0.35),
-                clipPlane, sectionIndicator, sectionFill, sectionLine);
+                clipPlane, sectionIndicator, sectionFill, sectionLine,
+                useLod: _lodRequested);
 
             _d3dImage.AddDirtyRect(new Int32Rect(0, 0, _renderer.Width, _renderer.Height));
         }
@@ -893,7 +973,8 @@ public class WcuViewport : Control
             highlightColor, nodeColor, pointSize,
             _lastEffectiveDeformationScale, GetEffectiveGlyphScale(),
             ShowUndeformedWireframe, ToVector4(edgeColor, 0.35),
-            clipPlane, sectionIndicator, sectionFill, sectionLine);
+            clipPlane, sectionIndicator, sectionFill, sectionLine,
+            useLod: _lodRequested);
 
         if (_softwareBitmap is null || sizeChanged)
         {
@@ -949,14 +1030,18 @@ public class WcuViewport : Control
         _selectionDirty = true;
 
         var bounds = Bounds3D.Empty;
+        var meshBounds = new List<Bounds3D>(meshes.Count);
         foreach (var mesh in meshes)
         {
-            bounds = bounds.Union(ViewportGeometry.ComputeBounds(mesh.Positions));
+            var b = ViewportGeometry.ComputeBounds(mesh.Positions);
+            meshBounds.Add(b);
+            bounds = bounds.Union(b);
         }
 
         if (bounds.IsEmpty)
         {
             _localBounds = Bounds3D.Empty;
+            _hasAnyLod = false;
             _lastGeometryBuildTime = buildTimer.Elapsed;
             return;
         }
@@ -968,13 +1053,21 @@ public class WcuViewport : Control
             bounds.MinX - ox, bounds.MinY - oy, bounds.MinZ - oz,
             bounds.MaxX - ox, bounds.MaxY - oy, bounds.MaxZ - oz);
 
-        foreach (var mesh in meshes)
+        for (var i = 0; i < meshes.Count; i++)
         {
-            var gpu = _renderer.CreateMesh(mesh, ox, oy, oz, EdgeExtractionLimit);
+            var gpu = _renderer.CreateMesh(
+                meshes[i], ox, oy, oz, EdgeExtractionLimit, InteractiveLodThreshold, meshBounds[i]);
             if (gpu is not null)
             {
-                _gpuMeshes.Add((mesh, gpu));
+                _gpuMeshes.Add((meshes[i], gpu));
             }
+        }
+
+        _hasAnyLod = _gpuMeshes.Any(pair => pair.Gpu.HasLod);
+        if (!_hasAnyLod)
+        {
+            _lodRequested = false;
+            _lodRestoreTimer?.Stop();
         }
 
         _lastGeometryBuildTime = buildTimer.Elapsed;
@@ -2070,6 +2163,9 @@ public class WcuViewport : Control
         _colorMapDirty = true;
         _selectionDirty = true;
         _glyphDirty = true;
+        _hasAnyLod = false;
+        _lodRequested = false;
+        _lodRestoreTimer?.Stop();
         _lastBackBuffer = 0;
         _d3dImage = null;
         _softwareBitmap = null;

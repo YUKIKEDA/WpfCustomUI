@@ -10,10 +10,10 @@ using WpfCustomUI.Viewport3D;
 namespace WpfCustomUI.Gallery.Pages;
 
 /// <summary>
-/// 大規模メッシュ性能のベンチマークデモ(spec 6.22.6)。合成波面メッシュを
-/// 10万〜5,000万三角形で生成し、構築時間/描画時間/実測 FPS を統計 API
+/// 大規模メッシュ性能のベンチマークデモ(spec 6.22.6 / 6.23.6)。合成波面メッシュを
+/// 10万〜2億三角形で生成し、構築時間/描画時間/LOD・カリング統計/実測 FPS を統計 API
 /// (<see cref="WcuViewport.GetStatistics"/>)で表示する。ピック(面選択)は
-/// チャンク基点オフセットの整合確認を兼ねる。
+/// チャンク基点オフセットの整合確認、回転アニメは操作中 LOD の動作確認を兼ねる。
 /// </summary>
 public partial class ViewportBenchmarkPage : UserControl
 {
@@ -41,8 +41,10 @@ public partial class ViewportBenchmarkPage : UserControl
         Viewport.ColorScale = _colorScale;
         Viewport.Selection.Changed += OnSelectionChanged;
 
-        // 構築は次の描画フレームで走る(遅延構築)ため、統計はタイマーで追従させる
-        _statsTimer = new DispatcherTimer(DispatcherPriority.Background)
+        // 構築は次の描画フレームで走る(遅延構築)ため、統計はタイマーで追従させる。
+        // 回転アニメ中は CompositionTarget.Rendering が毎フレーム発火し Background だと
+        // 飢餓するため、Normal 優先度で LOD 中も統計が更新されるようにする
+        _statsTimer = new DispatcherTimer(DispatcherPriority.Normal)
         {
             Interval = TimeSpan.FromMilliseconds(500),
         };
@@ -162,7 +164,9 @@ public partial class ViewportBenchmarkPage : UserControl
             $"三角形 {stats.TriangleCount:N0} / 節点 {stats.VertexCount:N0} / チャンク {stats.ChunkCount} / "
             + $"エッジスキップ {stats.EdgeSkippedMeshCount} / "
             + $"構築 {stats.LastGeometryBuildTime.TotalMilliseconds:N0} ms / "
-            + $"描画 {stats.LastRenderTime.TotalMilliseconds:N1} ms");
+            + $"描画 {stats.LastRenderTime.TotalMilliseconds:N1} ms / "
+            + $"LOD 三角形 {stats.LodTriangleCount:N0} / 描画チャンク {stats.LastDrawnChunkCount}"
+            + $"{(stats.IsLodActive ? " / LOD描画中" : string.Empty)}");
     }
 
     private void OnCompositionRendering(object? sender, EventArgs e)
@@ -219,6 +223,15 @@ public partial class ViewportBenchmarkPage : UserControl
         if (Viewport is not null)
         {
             SetRotating(RotateToggle.IsChecked == true);
+        }
+    }
+
+    /// <summary>操作中 LOD の有効/無効(閾値の切替、変更でジオメトリ再構築が走る)。</summary>
+    private void OnLodToggleChanged(object sender, RoutedEventArgs e)
+    {
+        if (Viewport is not null)
+        {
+            Viewport.InteractiveLodThreshold = LodToggle.IsChecked == true ? 5_000_000 : int.MaxValue;
         }
     }
 

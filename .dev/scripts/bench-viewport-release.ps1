@@ -1,5 +1,5 @@
-# Release ビルドの手動ベンチ(spec 6.22.7)。100万/1,000万/2,500万/5,000万の
-# 構築時間・描画時間・回転アニメ FPS を計測して出力する(結果は spec に記録)。
+# Release ビルドの手動ベンチ(spec 6.22.7 / 6.23.7)。100万〜2億の
+# 構築時間・描画時間・回転アニメ FPS(LOD)・メモリを計測して出力する(結果は spec に記録)。
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 Add-Type @"
@@ -47,6 +47,8 @@ $Lbl1M = '100' + [string][char]0x4E07
 $Lbl10M = '1,000' + [string][char]0x4E07
 $Lbl25M = '2,500' + [string][char]0x4E07
 $Lbl50M = '5,000' + [string][char]0x4E07
+$Lbl100M = '1' + [string][char]0x5104   # 1億
+$Lbl200M = '2' + [string][char]0x5104   # 2億
 
 $rootDir = 'd:\home\Programs\CSharpProjects\WpfCustomUI'
 $exe = Join-Path $rootDir 'WpfCustomUI.Gallery\bin\Release\net10.0-windows\WpfCustomUI.Gallery.exe'
@@ -73,7 +75,9 @@ $cases = @(
     @{ Label = $Lbl1M;  Expected = '999,698';    Timeout = 60;  Skip = $true },  # 既定選択済み
     @{ Label = $Lbl10M; Expected = '9,999,392';  Timeout = 120; Skip = $false },
     @{ Label = $Lbl25M; Expected = '25,006,592'; Timeout = 240; Skip = $false },
-    @{ Label = $Lbl50M; Expected = '50,000,000'; Timeout = 480; Skip = $false }
+    @{ Label = $Lbl50M; Expected = '50,000,000'; Timeout = 480; Skip = $false },
+    @{ Label = $Lbl100M; Expected = '99,998,082'; Timeout = 900; Skip = $false },
+    @{ Label = $Lbl200M; Expected = '200,000,000'; Timeout = 1800; Skip = $false }
 )
 
 foreach ($case in $cases) {

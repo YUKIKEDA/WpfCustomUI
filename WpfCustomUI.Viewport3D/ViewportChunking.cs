@@ -61,7 +61,7 @@ internal sealed class ChunkVertexRemap(int vertexCount)
 /// </summary>
 internal static class ViewportChunking
 {
-    /// <summary>チャンクあたりの最大節点数(28B/頂点 × 400万 = 112MB)。</summary>
+    /// <summary>チャンクあたりの最大節点数(20B/頂点 × 400万 = 80MB、spec 6.23.2 の圧縮後)。</summary>
     public const int DefaultMaxVerticesPerChunk = 4_000_000;
 
     /// <summary>チャンクあたりの最大三角形数(12B/三角形 × 800万 = 96MB)。</summary>

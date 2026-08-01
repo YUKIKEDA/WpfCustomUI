@@ -35,10 +35,10 @@ internal static class HlslSource
 
         struct VSIn
         {
-            float3 pos    : POSITION;
-            float3 normal : NORMAL;
-            float  scalar : TEXCOORD0;
-            float3 disp   : TEXCOORD1;
+            float3 pos          : POSITION;
+            uint   packedNormal : NORMAL;   // octahedral 16bit×2(spec 6.23.2、頂点 28B→20B)
+            float  scalar       : TEXCOORD0;
+            float3 disp         : TEXCOORD1;
         };
 
         struct PSIn
@@ -49,6 +49,19 @@ internal static class HlslSource
             float  clip   : SV_ClipDistance0;
         };
 
+        // octahedral 16bit×2 → 単位法線(ViewportGeometry.DecodeOctahedralNormal と同式)
+        float3 DecodeOctNormal(uint p)
+        {
+            float2 e = float2(p & 0xFFFFu, p >> 16) / 65535.0 * 2.0 - 1.0;
+            float3 v = float3(e.x, e.y, 1.0 - abs(e.x) - abs(e.y));
+            if (v.z < 0.0)
+            {
+                float2 s = float2(e.x >= 0.0 ? 1.0 : -1.0, e.y >= 0.0 ? 1.0 : -1.0);
+                v.xy = (1.0 - abs(e.yx)) * s;
+            }
+            return normalize(v);
+        }
+
         PSIn VSMain(VSIn v)
         {
             PSIn o;
@@ -56,7 +69,7 @@ internal static class HlslSource
             // (小変形前提の CAE 表示では十分で、陰影のちらつきも避けられる)
             float3 pos = v.pos + v.disp * DeformParams.x;
             o.pos = mul(float4(pos, 1.0), ViewProj);
-            o.normal = v.normal;
+            o.normal = DecodeOctNormal(v.packedNormal);
             o.scalar = v.scalar;
             // 断面カット(spec 6.19.2): 変形後の位置で符号付き距離を評価し、負側をクリップ
             o.clip = dot(pos, ClipPlane.xyz) + ClipPlane.w;

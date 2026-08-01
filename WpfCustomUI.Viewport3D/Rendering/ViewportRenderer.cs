@@ -104,6 +104,12 @@ internal sealed unsafe class ViewportRenderer : IDisposable
     private ComPtr<ID3D11Buffer> _constantBuffer;
     private ComPtr<ID3D11Buffer> _sectionIndicatorBuffer;
     private ComPtr<ID3D11Query> _frameCompleteQuery;
+
+    /// <summary>
+    /// 変位を持たないメッシュ用の共有ゼロ変位バッファ(12B、ストライド 0 で束縛)。
+    /// 全頂点が同じゼロ要素を読むため、節点数ぶんの変位バッファを作らずに済む(spec 6.23.2)。
+    /// </summary>
+    private ComPtr<ID3D11Buffer> _zeroDisplacementBuffer;
     private ComPtr<ID3D11Buffer> _glyphVertexBuffer;
     private ComPtr<ID3D11Buffer> _glyphIndexBuffer;
     private uint _glyphIndexCount;
@@ -154,6 +160,12 @@ internal sealed unsafe class ViewportRenderer : IDisposable
     public int Width { get; private set; }
 
     public int Height { get; private set; }
+
+    /// <summary>直近フレームで(カリング後に)描画したメッシュパスのチャンク数(spec 6.23.5)。</summary>
+    public int LastDrawnChunkCount { get; private set; }
+
+    /// <summary>直近フレームで LOD チャンクを 1 つでも描画したか(spec 6.23.5)。</summary>
+    public bool LastFrameUsedLod { get; private set; }
 
     internal ComPtr<ID3D11Device> Device => _device;
 
@@ -300,7 +312,8 @@ internal sealed unsafe class ViewportRenderer : IDisposable
         Vector4 clipPlane,
         float[]? sectionIndicatorVertices,
         Vector4 sectionFillColor,
-        Vector4 sectionLineColor)
+        Vector4 sectionLineColor,
+        bool useLod = false)
     {
         if (_msaaRtv.Handle is null)
         {
@@ -308,6 +321,13 @@ internal sealed unsafe class ViewportRenderer : IDisposable
         }
 
         var ctx = _context.Handle;
+
+        // フラスタムカリング(spec 6.23.4): チャンク AABB が視錐台外なら描画をスキップする。
+        // 変形表示中は最大変位×スケールぶん AABB を拡大して保守的に判定する
+        Span<Vector4> frustum = stackalloc Vector4[ViewportCulling.PlaneCount];
+        ViewportCulling.ExtractFrustumPlanes(in viewProj, frustum);
+        var drawnChunks = 0;
+        var usedLod = false;
 
         var bg = stackalloc float[4] { background.X, background.Y, background.Z, background.W };
         ctx->ClearRenderTargetView(_msaaRtv.Handle, bg);
@@ -343,7 +363,8 @@ internal sealed unsafe class ViewportRenderer : IDisposable
             ClipPlane = ViewportSection.DisabledClip,
         };
 
-        // パス 1: 不透明メッシュ → 半透明メッシュの順に三角形を描画(チャンク毎、spec 6.22.2)
+        // パス 1: 不透明メッシュ → 半透明メッシュの順に三角形を描画(チャンク毎、spec 6.22.2)。
+        // 操作中 LOD が有効なメッシュは LOD チャンクを描く(spec 6.23.3)
         foreach (var transparentPass in (ReadOnlySpan<bool>)[false, true])
         {
             foreach (var item in items)
@@ -365,21 +386,32 @@ internal sealed unsafe class ViewportRenderer : IDisposable
                 ctx->VSSetShader(_meshVs.Handle, null, 0);
                 ctx->PSSetShader(_meshPs.Handle, null, 0);
                 ctx->IASetPrimitiveTopology(D3DPrimitiveTopology.D3D11PrimitiveTopologyTrianglelist);
-                foreach (var chunk in mesh.Chunks)
+
+                var meshUseLod = useLod && mesh.HasLod;
+                usedLod |= meshUseLod;
+                var expand = mesh.MaxDisplacementMagnitude * MathF.Abs(deformationScale);
+                foreach (var chunk in meshUseLod ? mesh.LodChunks : mesh.Chunks)
                 {
+                    if (!ViewportCulling.IntersectsFrustum(frustum, chunk.BoundsMin, chunk.BoundsMax, expand))
+                    {
+                        continue;
+                    }
+
                     BindVertexBuffer(ctx, chunk);
                     ctx->IASetIndexBuffer(chunk.TriangleIndexBufferHandle, DxgiFormat.FormatR32Uint, 0);
                     ctx->DrawIndexed(chunk.TriangleIndexCount, 0, 0);
+                    drawnChunks++;
                 }
             }
         }
 
-        // パス 2: エッジ重畳(不透明のみ、深度テストあり・シェーダ側で微小手前シフト)
+        // パス 2: エッジ重畳(不透明のみ、深度テストあり・シェーダ側で微小手前シフト)。
+        // LOD 描画中のメッシュはエッジを描かない(spec 6.23.3: LOD 中はエッジ/グリフ/非変形重畳を非表示)
         ctx->OMSetBlendState(null, null, 0xFFFFFFFF);
         foreach (var item in items)
         {
             var mesh = item.Mesh;
-            if (!mesh.ShowEdges || mesh.EdgesSkipped)
+            if (!mesh.ShowEdges || mesh.EdgesSkipped || (useLod && mesh.HasLod))
             {
                 continue;
             }
@@ -393,9 +425,11 @@ internal sealed unsafe class ViewportRenderer : IDisposable
             ctx->VSSetShader(_lineVs.Handle, null, 0);
             ctx->PSSetShader(_linePs.Handle, null, 0);
             ctx->IASetPrimitiveTopology(D3DPrimitiveTopology.D3D11PrimitiveTopologyLinelist);
+            var expand = mesh.MaxDisplacementMagnitude * MathF.Abs(deformationScale);
             foreach (var chunk in mesh.Chunks)
             {
-                if (chunk.EdgeIndexCount == 0)
+                if (chunk.EdgeIndexCount == 0
+                    || !ViewportCulling.IntersectsFrustum(frustum, chunk.BoundsMin, chunk.BoundsMax, expand))
                 {
                     continue;
                 }
@@ -417,7 +451,7 @@ internal sealed unsafe class ViewportRenderer : IDisposable
             foreach (var item in items)
             {
                 var mesh = item.Mesh;
-                if (mesh.GlyphInstanceCount == 0 || mesh.GlyphBuffers.Count == 0)
+                if (mesh.GlyphInstanceCount == 0 || mesh.GlyphBuffers.Count == 0 || (useLod && mesh.HasLod))
                 {
                     continue;
                 }
@@ -453,7 +487,7 @@ internal sealed unsafe class ViewportRenderer : IDisposable
             foreach (var item in items)
             {
                 var mesh = item.Mesh;
-                if (mesh.EdgesSkipped)
+                if (mesh.EdgesSkipped || (useLod && mesh.HasLod))
                 {
                     continue;
                 }
@@ -471,7 +505,9 @@ internal sealed unsafe class ViewportRenderer : IDisposable
                 ctx->IASetPrimitiveTopology(D3DPrimitiveTopology.D3D11PrimitiveTopologyLinelist);
                 foreach (var chunk in mesh.Chunks)
                 {
-                    if (chunk.EdgeIndexCount == 0)
+                    // 非変形描画なので AABB 余白なしで判定できる
+                    if (chunk.EdgeIndexCount == 0
+                        || !ViewportCulling.IntersectsFrustum(frustum, chunk.BoundsMin, chunk.BoundsMax))
                     {
                         continue;
                     }
@@ -516,8 +552,17 @@ internal sealed unsafe class ViewportRenderer : IDisposable
 
             if (item.IsPartSelected)
             {
-                foreach (var chunk in item.Mesh.Chunks)
+                // LOD 描画中はハイライトも LOD チャンクに重ねる(フル解像度を重ねると LOD の意味がない)
+                var mesh = item.Mesh;
+                var meshUseLod = useLod && mesh.HasLod;
+                var expand = mesh.MaxDisplacementMagnitude * MathF.Abs(deformationScale);
+                foreach (var chunk in meshUseLod ? mesh.LodChunks : mesh.Chunks)
                 {
+                    if (!ViewportCulling.IntersectsFrustum(frustum, chunk.BoundsMin, chunk.BoundsMax, expand))
+                    {
+                        continue;
+                    }
+
                     BindVertexBuffer(ctx, chunk);
                     ctx->IASetIndexBuffer(chunk.TriangleIndexBufferHandle, DxgiFormat.FormatR32Uint, 0);
                     ctx->DrawIndexed(chunk.TriangleIndexCount, 0, 0);
@@ -585,6 +630,9 @@ internal sealed unsafe class ViewportRenderer : IDisposable
 
         ctx->Flush();
         WaitForGpuCompletion();
+
+        LastDrawnChunkCount = drawnChunks;
+        LastFrameUsedLod = usedLod;
     }
 
     /// <summary>
@@ -773,6 +821,12 @@ internal sealed unsafe class ViewportRenderer : IDisposable
         ctx->PSSetShader(_pickPs.Handle, null, 0);
         ctx->IASetPrimitiveTopology(D3DPrimitiveTopology.D3D11PrimitiveTopologyTrianglelist);
 
+        // ID パスも AABB でフラスタムカリングする(spec 6.23.4)。視錐台外のチャンクは
+        // どのピクセルにも寄与しないため、ピック結果(見えているものだけ)は変わらない。
+        // ピック/プローブは LOD 中も常にフルメッシュを描く(spec 6.23.3)
+        Span<Vector4> frustum = stackalloc Vector4[ViewportCulling.PlaneCount];
+        ViewportCulling.ExtractFrustumPlanes(in viewProj, frustum);
+
         for (var i = 0; i < meshes.Count; i++)
         {
             var mesh = meshes[i];
@@ -780,8 +834,14 @@ internal sealed unsafe class ViewportRenderer : IDisposable
             // 表示と同じクリップを適用 → 断面で隠れた要素はピックにも掛からない(spec 6.19.2)
             constants.ClipPlane = mesh.IsClippable ? clipPlane : ViewportSection.DisabledClip;
 
+            var expand = mesh.MaxDisplacementMagnitude * MathF.Abs(deformationScale);
             foreach (var chunk in mesh.Chunks)
             {
+                if (!ViewportCulling.IntersectsFrustum(frustum, chunk.BoundsMin, chunk.BoundsMax, expand))
+                {
+                    continue;
+                }
+
                 // SV_PrimitiveID はドロー毎に 0 リセットされるため、チャンクの
                 // グローバル三角形基点を cbuffer で加算する(spec 6.22.2)
                 constants.PickTriangleBase = chunk.TriangleBase;
@@ -863,12 +923,15 @@ internal sealed unsafe class ViewportRenderer : IDisposable
 
     public GpuMesh? CreateMesh(
         ViewportMesh mesh, double originX, double originY, double originZ,
-        int edgeExtractionLimit = int.MaxValue) =>
-        GpuMesh.Create(_device, mesh, originX, originY, originZ, edgeExtractionLimit);
+        int edgeExtractionLimit = int.MaxValue,
+        int interactiveLodThreshold = int.MaxValue,
+        Bounds3D meshBounds = default) =>
+        GpuMesh.Create(_device, mesh, originX, originY, originZ, edgeExtractionLimit,
+            interactiveLodThreshold, meshBounds);
 
     /// <summary>変位バッファのみ差し替える(過渡再生のフレーム更新用、spec 6.18.3)。</summary>
     public void UpdateMeshDisplacements(GpuMesh mesh, double[]? displacements) =>
-        mesh.UpdateDisplacements(_context, displacements);
+        mesh.UpdateDisplacements(_device, _context, displacements);
 
     /// <summary>グリフのインスタンスバッファを差し替える(spec 6.21)。</summary>
     public void UpdateMeshGlyphs(GpuMesh mesh, float[] instanceData, int instanceCount) =>
@@ -1062,6 +1125,7 @@ internal sealed unsafe class ViewportRenderer : IDisposable
                     InputSlotClass = InputClassification.PerVertexData,
                 };
 
+                // 頂点 20B: position(12B) + octahedral 法線 uint(4B) + scalar(4B)(spec 6.23.2)
                 var meshElements = stackalloc InputElementDesc[4]
                 {
                     new InputElementDesc
@@ -1074,7 +1138,7 @@ internal sealed unsafe class ViewportRenderer : IDisposable
                     new InputElementDesc
                     {
                         SemanticName = pNormal,
-                        Format = DxgiFormat.FormatR32G32B32Float,
+                        Format = DxgiFormat.FormatR32Uint,
                         AlignedByteOffset = 12,
                         InputSlotClass = InputClassification.PerVertexData,
                     },
@@ -1082,7 +1146,7 @@ internal sealed unsafe class ViewportRenderer : IDisposable
                     {
                         SemanticName = pTexCoord,
                         Format = DxgiFormat.FormatR32Float,
-                        AlignedByteOffset = 24,
+                        AlignedByteOffset = 16,
                         InputSlotClass = InputClassification.PerVertexData,
                     },
                     displacementElement,
@@ -1108,7 +1172,7 @@ internal sealed unsafe class ViewportRenderer : IDisposable
                     lineVsCode.GetBufferPointer(), lineVsCode.GetBufferSize(),
                     _lineLayout.GetAddressOf()));
 
-                // ピックパス: メッシュ頂点バッファ(28B ストライド)の POSITION + 変位を読む
+                // ピックパス: メッシュ頂点バッファ(20B ストライド)の POSITION + 変位を読む
                 SilkMarshal.ThrowHResult(device->CreateInputLayout(
                     lineElements, 2,
                     pickVsCode.GetBufferPointer(), pickVsCode.GetBufferSize(),
@@ -1251,6 +1315,12 @@ internal sealed unsafe class ViewportRenderer : IDisposable
         };
         SilkMarshal.ThrowHResult(device->CreateBuffer(&cbDesc, null, _constantBuffer.GetAddressOf()));
 
+        // 共有ゼロ変位バッファ(12B)。変位を持たないメッシュの slot 1 にストライド 0 で束縛し、
+        // 全頂点に同じ (0,0,0) を読ませる(節点数ぶんの変位バッファを節約、spec 6.23.2)
+        var zeroDisplacement = stackalloc float[3] { 0.0f, 0.0f, 0.0f };
+        _zeroDisplacementBuffer = CreateImmutableBufferRaw(
+            device, zeroDisplacement, 3 * sizeof(float), BindFlag.VertexBuffer);
+
         // ラスタライザ: CAE シェルは裏面も見えるためカリングなし
         var rsDesc = new RasterizerDesc
         {
@@ -1365,10 +1435,21 @@ internal sealed unsafe class ViewportRenderer : IDisposable
         ctx->Unmap((ID3D11Resource*)_constantBuffer.Handle, 0);
     }
 
-    private static void BindVertexBuffer(ID3D11DeviceContext* ctx, GpuMeshChunk chunk)
+    private void BindVertexBuffer(ID3D11DeviceContext* ctx, GpuMeshChunk chunk)
     {
-        var buffers = stackalloc ID3D11Buffer*[2] { chunk.VertexBufferHandle, chunk.DisplacementBufferHandle };
-        var strides = stackalloc uint[2] { GpuMesh.VertexStride, GpuMesh.DisplacementStride };
+        // 変位バッファを持たないチャンクは共有ゼロバッファをストライド 0 で束縛する
+        // (全頂点が同じゼロ要素を読む = 変形なし、spec 6.23.2)
+        var hasDisplacement = chunk.DisplacementBufferHandle is not null;
+        var buffers = stackalloc ID3D11Buffer*[2]
+        {
+            chunk.VertexBufferHandle,
+            hasDisplacement ? chunk.DisplacementBufferHandle : _zeroDisplacementBuffer.Handle,
+        };
+        var strides = stackalloc uint[2]
+        {
+            GpuMesh.VertexStride,
+            hasDisplacement ? GpuMesh.DisplacementStride : 0u,
+        };
         var offsets = stackalloc uint[2] { 0, 0 };
         ctx->IASetVertexBuffers(0, 2, buffers, strides, offsets);
     }
@@ -1494,6 +1575,7 @@ internal sealed unsafe class ViewportRenderer : IDisposable
         _highlightDepthState.Dispose();
         _depthState.Dispose();
         _rasterizerState.Dispose();
+        _zeroDisplacementBuffer.Dispose();
         _frameCompleteQuery.Dispose();
         _glyphIndexBuffer.Dispose();
         _glyphVertexBuffer.Dispose();

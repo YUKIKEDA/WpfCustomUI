@@ -11,6 +11,45 @@ public class Win32 {
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
 }
 "@
+Add-Type -ReferencedAssemblies System.Drawing @"
+using System;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
+public static class PixelDiff {
+    public static int Count(string pathA, string pathB, int tolerance) {
+        using (var a = new Bitmap(pathA))
+        using (var b = new Bitmap(pathB)) {
+            int w = Math.Min(a.Width, b.Width), h = Math.Min(a.Height, b.Height);
+            var rect = new Rectangle(0, 0, w, h);
+            var da = a.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+            var db = b.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+            try {
+                var bytesA = new byte[da.Stride * h];
+                var bytesB = new byte[db.Stride * h];
+                Marshal.Copy(da.Scan0, bytesA, 0, bytesA.Length);
+                Marshal.Copy(db.Scan0, bytesB, 0, bytesB.Length);
+                int count = 0;
+                for (int y = 0; y < h; y++) {
+                    int rowA = y * da.Stride, rowB = y * db.Stride;
+                    for (int x = 0; x < w; x++) {
+                        int ia = rowA + x * 4, ib = rowB + x * 4;
+                        if (Math.Abs(bytesA[ia] - bytesB[ib]) > tolerance
+                            || Math.Abs(bytesA[ia + 1] - bytesB[ib + 1]) > tolerance
+                            || Math.Abs(bytesA[ia + 2] - bytesB[ib + 2]) > tolerance) {
+                            count++;
+                        }
+                    }
+                }
+                return count;
+            } finally {
+                a.UnlockBits(da);
+                b.UnlockBits(db);
+            }
+        }
+    }
+}
+"@
 
 function Capture-Region($x, $y, $w, $h, $path) {
     [Win32]::SetCursorPos(5, 5) | Out-Null
@@ -74,6 +113,25 @@ function Assert-Contains($label, $text, $substring) {
     }
 }
 
+function Assert-NotContains($label, $text, $substring) {
+    if ($text -like "*$substring*") {
+        Write-Output ("FAIL {0}: '{1}' unexpectedly in '{2}'" -f $label, $substring, $text)
+        $script:failures++
+    } else {
+        Write-Output ("PASS {0}: '{1}' absent" -f $label, $substring)
+    }
+}
+
+function Assert-Same($label, $fileA, $fileB, $maxPixels) {
+    $diff = [PixelDiff]::Count($fileA, $fileB, 8)
+    if ($diff -le $maxPixels) {
+        Write-Output ("PASS {0}: diff={1} (<= {2})" -f $label, $diff, $maxPixels)
+    } else {
+        Write-Output ("FAIL {0}: diff={1} (expected <= {2})" -f $label, $diff, $maxPixels)
+        $script:failures++
+    }
+}
+
 # 統計テキストが構築完了を示すまで待つ(タイマー更新 500ms)
 function Wait-ForStats($statsElement, $expectedTriangles, $timeoutSeconds) {
     $deadline = (Get-Date).AddSeconds($timeoutSeconds)
@@ -93,6 +151,8 @@ $LblChunk = [string][char]0x30C1 + [char]0x30E3 + [char]0x30F3 + [char]0x30AF  #
 $LblEdgeSkip = [string][char]0x30A8 + [char]0x30C3 + [char]0x30B8 + [char]0x30B9 + [char]0x30AD + [char]0x30C3 + [char]0x30D7  # エッジスキップ
 $LblSelected = [string][char]0x9078 + [char]0x629E + [char]0x9762  # 選択面
 $Lbl10M = '1,000' + [string][char]0x4E07  # 1,000万
+$LblLodTri = 'LOD ' + [string][char]0x4E09 + [char]0x89D2 + [char]0x5F62  # LOD 三角形
+$LblLodActive = 'LOD' + [string][char]0x63CF + [char]0x753B + [char]0x4E2D  # LOD描画中
 
 $rootDir = 'd:\home\Programs\CSharpProjects\WpfCustomUI'
 $exe = Join-Path $rootDir 'WpfCustomUI.Gallery\bin\Debug\net10.0-windows\WpfCustomUI.Gallery.exe'
@@ -208,7 +268,74 @@ if ($minId -lt 2500000 -and $maxId -gt 7500000 -and $maxId -lt 9999392) {
 
 Capture-Region 0 0 1280 960 (Join-Path $outDir 'benchmark-10m-dark.png')
 
-# ---- 5. ライトテーマのスクリーンショット(目視用) ----
+# ---- 5. 操作中 LOD(spec 6.23.3): 1,000万 > 閾値 500万 → LOD 構築済み ----
+$statsNow = $statsText.Current.Name
+Write-Output ("stats(10M with LOD): {0}" -f $statsNow)
+if ($statsNow -match ($LblLodTri + ' ([\d,]+)')) {
+    $lodTris = [long]($Matches[1] -replace ',', '')
+    if ($lodTris -ge 200000 -and $lodTris -le 1500000) {
+        Write-Output ("PASS 10M LOD built: lodTriangles={0} (~1/20 of 10M)" -f $lodTris)
+    } else {
+        Write-Output ("FAIL 10M LOD built: lodTriangles={0} (expected 200k..1.5M)" -f $lodTris)
+        $script:failures++
+    }
+} else {
+    Write-Output ("FAIL 10M LOD built: '{0}' not found in stats" -f $LblLodTri)
+    $script:failures++
+}
+
+# 静止時は LOD 描画中でない(ピック直後 = 操作から 700ms 以上経過)
+Assert-NotContains '10M idle renders full detail' $statsNow $LblLodActive
+
+# 回転アニメ中は LOD 描画になる
+Toggle-Switch (Find-ById $root 'RotateToggle')   # ON
+Start-Sleep -Milliseconds 2500
+$statsRotating = $statsText.Current.Name
+Write-Output ("stats(rotating): {0}" -f $statsRotating)
+Assert-Contains '10M rotating uses LOD' $statsRotating $LblLodActive
+Toggle-Switch (Find-ById $root 'RotateToggle')   # OFF
+
+# 停止から 300ms(復帰遅延)+ 統計更新 500ms 後にはフル描画へ戻る
+Start-Sleep -Milliseconds 2000
+$statsIdle = $statsText.Current.Name
+Write-Output ("stats(idle after rotate): {0}" -f $statsIdle)
+Assert-NotContains '10M restores full detail after idle' $statsIdle $LblLodActive
+
+# ---- 6. 静止時フル描画の決定性: LOD 有効(静止)と LOD 無効で同一ピクセル ----
+(Find-ById $root 'TopViewButton').GetCurrentPattern(
+    [System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+Start-Sleep -Milliseconds 400
+(Find-ByName $root 'Fit').GetCurrentPattern(
+    [System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+Start-Sleep -Milliseconds 1500   # LOD 復帰遅延(300ms)より十分長く待つ
+$imgLodIdle = Join-Path $outDir 'benchmark-10m-lod-idle.png'
+Capture-Region ([int]$r.X) ([int]$r.Y) ([int]$r.Width) ([int]$r.Height) $imgLodIdle
+
+# LOD 無効化(閾値 int.MaxValue → ジオメトリ再構築、LOD 三角形 0 になるまで待つ)
+Toggle-Switch (Find-ById $root 'LodToggle')      # OFF
+$statsNoLod = Wait-ForStats $statsText ($LblLodTri + ' 0') 180
+Write-Output ("stats(LOD disabled): {0}" -f $statsNoLod)
+Assert-Contains 'LOD disabled has no LOD mesh' $statsNoLod ($LblLodTri + ' 0')
+
+(Find-ById $root 'TopViewButton').GetCurrentPattern(
+    [System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+Start-Sleep -Milliseconds 400
+(Find-ByName $root 'Fit').GetCurrentPattern(
+    [System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+Start-Sleep -Milliseconds 1500
+$imgNoLod = Join-Path $outDir 'benchmark-10m-nolod.png'
+Capture-Region ([int]$r.X) ([int]$r.Y) ([int]$r.Width) ([int]$r.Height) $imgNoLod
+
+Assert-Same 'static full render identical (LOD on idle vs LOD off)' $imgLodIdle $imgNoLod 50
+
+# LOD を既定(有効)へ戻す(LOD 三角形が 0 でなくなる = 再構築完了を待つ)
+Toggle-Switch (Find-ById $root 'LodToggle')      # ON
+$deadline = (Get-Date).AddSeconds(180)
+while ((Get-Date) -lt $deadline -and $statsText.Current.Name -like ('*' + $LblLodTri + ' 0*')) {
+    Start-Sleep -Milliseconds 500
+}
+
+# ---- 7. ライトテーマのスクリーンショット(目視用) ----
 Toggle-Switch (Find-ByName $root $LblTheme)
 Start-Sleep -Milliseconds 2000
 Capture-Region 0 0 1280 960 (Join-Path $outDir 'benchmark-10m-light.png')

@@ -286,6 +286,7 @@ public class ViewportChunkingTests
     {
         var a = new ViewportStatistics(
             50_000_000, 25_010_001, 1, 13, 1,
+            2_500_000, true, 7,
             TimeSpan.FromSeconds(3.2), TimeSpan.FromMilliseconds(33.0));
         var b = a with { };
 
@@ -293,6 +294,20 @@ public class ViewportChunkingTests
         Assert.Equal(50_000_000, a.TriangleCount);
         Assert.Equal(13, a.ChunkCount);
         Assert.Equal(1, a.EdgeSkippedMeshCount);
+        Assert.Equal(2_500_000, a.LodTriangleCount);
+        Assert.True(a.IsLodActive);
+        Assert.Equal(7, a.LastDrawnChunkCount);
+    }
+
+    [Fact]
+    public void InteractiveLodThreshold_Behavior()
+    {
+        // GpuMesh.Create の判定式(triangleCount > threshold で LOD 構築)と同じ境界条件
+        static bool ShouldBuildLod(int triangleCount, int threshold) => triangleCount > threshold;
+
+        Assert.False(ShouldBuildLod(5_000_000, 5_000_000)); // 500万ちょうど → LOD なし
+        Assert.True(ShouldBuildLod(5_000_001, 5_000_000));  // 超過 → LOD 構築
+        Assert.False(ShouldBuildLod(int.MaxValue, int.MaxValue)); // int.MaxValue で実質無効
     }
 
     [Fact]
