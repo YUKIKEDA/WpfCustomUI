@@ -253,7 +253,7 @@ public class ConvergenceMonitor : Control
             var line = plot.Add.HorizontalLine(y);
             line.LinePattern = ScottPlot.LinePattern.Dashed;
             line.LineWidth = 1.5f;
-            line.Color = ChartHelpers.GetTokenColor("Wcu.Color.Yellow.500", "#CCA700");
+            line.Color = ChartHelpers.GetTokenColor("Wcu.Color.Warning", "#CCA700");
         }
 
         plot.Axes.Left.TickGenerator = IsLogScale

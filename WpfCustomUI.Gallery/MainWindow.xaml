@@ -24,6 +24,16 @@
                            Text="Gallery"
                            Foreground="{DynamicResource Wcu.Brush.Text.Secondary}"
                            Margin="12,0,12,12" />
+
+                <!-- テーマ切替(spec 6.15.3) -->
+                <StackPanel DockPanel.Dock="Bottom" Margin="12,8,12,12">
+                    <Separator Margin="0,0,0,10" />
+                    <wcu:ToggleSwitch x:Name="ThemeToggle"
+                                      Content="ライトテーマ"
+                                      Checked="ThemeToggle_Checked"
+                                      Unchecked="ThemeToggle_Unchecked" />
+                </StackPanel>
+
                 <ListBox x:Name="NavList"
                          Background="Transparent"
                          BorderThickness="0"

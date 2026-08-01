@@ -1,14 +1,14 @@
 <!--
-    WcuDockTheme のリソース辞書(spec 6.13.4)。
+    WcuDockTheme のリソース辞書(spec 6.13.4 / 6.15.2)。
 
     AvalonDock.Themes.VS2013 は「ResourceKeys(ComponentResourceKey)にブラシを与えると
     テンプレート側が DynamicResource で拾う」再配色設計になっているため、
     テンプレート XAML(Generic.xaml / OverlayButtons.xaml)はパッケージのものを
     そのままマージし、この辞書ではブラシ値だけを Wcu トークンへ差し替える。
 
-    各ブラシの Color は Wcu.Color.* を DynamicResource で参照しており、
-    テーマ切替・ThemeManager.SetAccent によるアクセント変更に実行時追従する
-    (フローティングウィンドウも DockingManager と同じテーマ辞書を共有する)。
+    各ブラシの Color はセマンティック Color キー(Wcu.Color.Surface.* 等)を
+    DynamicResource で参照しており、ライト/ダーク切替・ThemeManager.SetAccent による
+    アクセント変更に実行時追従する(リテラルの Gray.* は参照しないこと)。
 -->
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -27,21 +27,21 @@
     <!-- ================= 全体 ================= -->
     <!-- ドック領域の背景(ペインの隙間に見える色) -->
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.Background}"
-                     Color="{DynamicResource Wcu.Color.Gray.850}" />
+                     Color="{DynamicResource Wcu.Color.Surface.Panel}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.PanelBorderBrush}"
-                     Color="{DynamicResource Wcu.Color.Gray.700}" />
+                     Color="{DynamicResource Wcu.Color.Border.Default}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.TabBackground}"
-                     Color="{DynamicResource Wcu.Color.Gray.850}" />
+                     Color="{DynamicResource Wcu.Color.Surface.Panel}" />
 
     <!-- ================= 自動非表示タブ(サイドの縦タブ) ================= -->
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.AutoHideTabDefaultBackground}"
-                     Color="{DynamicResource Wcu.Color.Gray.850}" />
+                     Color="{DynamicResource Wcu.Color.Surface.Panel}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.AutoHideTabDefaultBorder}"
-                     Color="{DynamicResource Wcu.Color.Gray.700}" />
+                     Color="{DynamicResource Wcu.Color.Border.Default}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.AutoHideTabDefaultText}"
-                     Color="{DynamicResource Wcu.Color.Gray.400}" />
+                     Color="{DynamicResource Wcu.Color.Text.Secondary}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.AutoHideTabHoveredBackground}"
-                     Color="{DynamicResource Wcu.Color.Gray.850}" />
+                     Color="{DynamicResource Wcu.Color.Surface.Panel}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.AutoHideTabHoveredBorder}"
                      Color="{DynamicResource Wcu.Color.Accent.Default}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.AutoHideTabHoveredText}"
@@ -49,86 +49,86 @@
 
     <!-- ================= ドキュメントウェル: オーバーフローボタン ================= -->
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellOverflowButtonDefaultGlyph}"
-                     Color="{DynamicResource Wcu.Color.Gray.300}" />
+                     Color="{DynamicResource Wcu.Color.Text.Muted}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellOverflowButtonHoveredBackground}"
-                     Color="{DynamicResource Wcu.Color.Gray.700}" />
+                     Color="{DynamicResource Wcu.Color.Control.Hover}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellOverflowButtonHoveredBorder}"
-                     Color="{DynamicResource Wcu.Color.Gray.700}" />
+                     Color="{DynamicResource Wcu.Color.Control.Hover}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellOverflowButtonHoveredGlyph}"
-                     Color="{DynamicResource Wcu.Color.Gray.100}" />
+                     Color="{DynamicResource Wcu.Color.Text.Primary}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellOverflowButtonPressedBackground}"
-                     Color="{DynamicResource Wcu.Color.Gray.600}" />
+                     Color="{DynamicResource Wcu.Color.Control.Pressed}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellOverflowButtonPressedBorder}"
-                     Color="{DynamicResource Wcu.Color.Gray.600}" />
+                     Color="{DynamicResource Wcu.Color.Control.Pressed}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellOverflowButtonPressedGlyph}"
-                     Color="{DynamicResource Wcu.Color.Gray.100}" />
+                     Color="{DynamicResource Wcu.Color.Text.Primary}" />
 
     <!-- ================= ドキュメントウェル: タブ ================= -->
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellTabSelectedActiveBackground}"
                      Color="{DynamicResource Wcu.Color.Accent.Default}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellTabSelectedActiveText}"
-                     Color="{DynamicResource Wcu.Color.White}" />
+                     Color="{DynamicResource Wcu.Color.Text.OnAccent}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellTabSelectedInactiveBackground}"
-                     Color="{DynamicResource Wcu.Color.Gray.725}" />
+                     Color="{DynamicResource Wcu.Color.State.SelectedInactive}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellTabSelectedInactiveText}"
-                     Color="{DynamicResource Wcu.Color.Gray.300}" />
+                     Color="{DynamicResource Wcu.Color.Text.Muted}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellTabUnselectedBackground}"
-                     Color="{DynamicResource Wcu.Color.Gray.850}" />
+                     Color="{DynamicResource Wcu.Color.Surface.Panel}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellTabUnselectedText}"
-                     Color="{DynamicResource Wcu.Color.Gray.300}" />
+                     Color="{DynamicResource Wcu.Color.Text.Muted}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellTabUnselectedHoveredBackground}"
                      Color="{DynamicResource Wcu.Color.Accent.Hover}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellTabUnselectedHoveredText}"
-                     Color="{DynamicResource Wcu.Color.White}" />
+                     Color="{DynamicResource Wcu.Color.Text.OnAccent}" />
 
     <!-- ================= ドキュメントタブの閉じるボタン ================= -->
     <!-- 選択中(アクティブ): タブ背景がアクセント色 -->
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellTabButtonSelectedActiveGlyph}"
-                     Color="{DynamicResource Wcu.Color.White}" />
+                     Color="{DynamicResource Wcu.Color.Text.OnAccent}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellTabButtonSelectedActiveHoveredBackground}"
                      Color="{DynamicResource Wcu.Color.Accent.Hover}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellTabButtonSelectedActiveHoveredBorder}"
                      Color="{DynamicResource Wcu.Color.Accent.Hover}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellTabButtonSelectedActiveHoveredGlyph}"
-                     Color="{DynamicResource Wcu.Color.White}" />
+                     Color="{DynamicResource Wcu.Color.Text.OnAccent}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellTabButtonSelectedActivePressedBackground}"
                      Color="{DynamicResource Wcu.Color.Accent.Pressed}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellTabButtonSelectedActivePressedBorder}"
                      Color="{DynamicResource Wcu.Color.Accent.Pressed}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellTabButtonSelectedActivePressedGlyph}"
-                     Color="{DynamicResource Wcu.Color.White}" />
+                     Color="{DynamicResource Wcu.Color.Text.OnAccent}" />
 
     <!-- 選択中(非アクティブ): タブ背景がグレー -->
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellTabButtonSelectedInactiveGlyph}"
-                     Color="{DynamicResource Wcu.Color.Gray.300}" />
+                     Color="{DynamicResource Wcu.Color.Text.Muted}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellTabButtonSelectedInactiveHoveredBackground}"
-                     Color="{DynamicResource Wcu.Color.Gray.700}" />
+                     Color="{DynamicResource Wcu.Color.Control.Hover}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellTabButtonSelectedInactiveHoveredBorder}"
-                     Color="{DynamicResource Wcu.Color.Gray.700}" />
+                     Color="{DynamicResource Wcu.Color.Control.Hover}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellTabButtonSelectedInactiveHoveredGlyph}"
-                     Color="{DynamicResource Wcu.Color.Gray.100}" />
+                     Color="{DynamicResource Wcu.Color.Text.Primary}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellTabButtonSelectedInactivePressedBackground}"
-                     Color="{DynamicResource Wcu.Color.Gray.600}" />
+                     Color="{DynamicResource Wcu.Color.Control.Pressed}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellTabButtonSelectedInactivePressedBorder}"
-                     Color="{DynamicResource Wcu.Color.Gray.600}" />
+                     Color="{DynamicResource Wcu.Color.Control.Pressed}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellTabButtonSelectedInactivePressedGlyph}"
-                     Color="{DynamicResource Wcu.Color.Gray.100}" />
+                     Color="{DynamicResource Wcu.Color.Text.Primary}" />
 
     <!-- 非選択タブのホバー時: タブ背景がアクセント(Hover)色 -->
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellTabButtonUnselectedTabHoveredGlyph}"
-                     Color="{DynamicResource Wcu.Color.White}" />
+                     Color="{DynamicResource Wcu.Color.Text.OnAccent}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellTabButtonUnselectedTabHoveredButtonHoveredBackground}"
                      Color="{DynamicResource Wcu.Color.Accent.Pressed}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellTabButtonUnselectedTabHoveredButtonHoveredBorder}"
                      Color="{DynamicResource Wcu.Color.Accent.Pressed}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellTabButtonUnselectedTabHoveredButtonHoveredGlyph}"
-                     Color="{DynamicResource Wcu.Color.White}" />
+                     Color="{DynamicResource Wcu.Color.Text.OnAccent}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellTabButtonUnselectedTabHoveredButtonPressedBackground}"
                      Color="{DynamicResource Wcu.Color.Accent.Muted}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellTabButtonUnselectedTabHoveredButtonPressedBorder}"
                      Color="{DynamicResource Wcu.Color.Accent.Muted}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DocumentWellTabButtonUnselectedTabHoveredButtonPressedGlyph}"
-                     Color="{DynamicResource Wcu.Color.White}" />
+                     Color="{DynamicResource Wcu.Color.Text.OnAccent}" />
 
     <!-- ================= ツールウィンドウ: キャプション ================= -->
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.ToolWindowCaptionActiveBackground}"
@@ -136,88 +136,88 @@
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.ToolWindowCaptionActiveGrip}"
                      Color="{DynamicResource Wcu.Color.Accent.Hover}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.ToolWindowCaptionActiveText}"
-                     Color="{DynamicResource Wcu.Color.White}" />
+                     Color="{DynamicResource Wcu.Color.Text.OnAccent}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.ToolWindowCaptionInactiveBackground}"
-                     Color="{DynamicResource Wcu.Color.Gray.850}" />
+                     Color="{DynamicResource Wcu.Color.Surface.Panel}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.ToolWindowCaptionInactiveGrip}"
-                     Color="{DynamicResource Wcu.Color.Gray.600}" />
+                     Color="{DynamicResource Wcu.Color.Border.Strong}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.ToolWindowCaptionInactiveText}"
-                     Color="{DynamicResource Wcu.Color.Gray.400}" />
+                     Color="{DynamicResource Wcu.Color.Text.Secondary}" />
 
     <!-- ================= ツールウィンドウ: キャプションボタン ================= -->
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.ToolWindowCaptionButtonActiveGlyph}"
-                     Color="{DynamicResource Wcu.Color.White}" />
+                     Color="{DynamicResource Wcu.Color.Text.OnAccent}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.ToolWindowCaptionButtonActiveHoveredBackground}"
                      Color="{DynamicResource Wcu.Color.Accent.Hover}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.ToolWindowCaptionButtonActiveHoveredBorder}"
                      Color="{DynamicResource Wcu.Color.Accent.Hover}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.ToolWindowCaptionButtonActiveHoveredGlyph}"
-                     Color="{DynamicResource Wcu.Color.White}" />
+                     Color="{DynamicResource Wcu.Color.Text.OnAccent}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.ToolWindowCaptionButtonActivePressedBackground}"
                      Color="{DynamicResource Wcu.Color.Accent.Pressed}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.ToolWindowCaptionButtonActivePressedBorder}"
                      Color="{DynamicResource Wcu.Color.Accent.Pressed}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.ToolWindowCaptionButtonActivePressedGlyph}"
-                     Color="{DynamicResource Wcu.Color.White}" />
+                     Color="{DynamicResource Wcu.Color.Text.OnAccent}" />
 
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.ToolWindowCaptionButtonInactiveGlyph}"
-                     Color="{DynamicResource Wcu.Color.Gray.300}" />
+                     Color="{DynamicResource Wcu.Color.Text.Muted}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.ToolWindowCaptionButtonInactiveHoveredBackground}"
-                     Color="{DynamicResource Wcu.Color.Gray.700}" />
+                     Color="{DynamicResource Wcu.Color.Control.Hover}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.ToolWindowCaptionButtonInactiveHoveredBorder}"
-                     Color="{DynamicResource Wcu.Color.Gray.700}" />
+                     Color="{DynamicResource Wcu.Color.Control.Hover}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.ToolWindowCaptionButtonInactiveHoveredGlyph}"
-                     Color="{DynamicResource Wcu.Color.Gray.100}" />
+                     Color="{DynamicResource Wcu.Color.Text.Primary}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.ToolWindowCaptionButtonInactivePressedBackground}"
-                     Color="{DynamicResource Wcu.Color.Gray.600}" />
+                     Color="{DynamicResource Wcu.Color.Control.Pressed}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.ToolWindowCaptionButtonInactivePressedBorder}"
-                     Color="{DynamicResource Wcu.Color.Gray.600}" />
+                     Color="{DynamicResource Wcu.Color.Control.Pressed}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.ToolWindowCaptionButtonInactivePressedGlyph}"
-                     Color="{DynamicResource Wcu.Color.Gray.100}" />
+                     Color="{DynamicResource Wcu.Color.Text.Primary}" />
 
     <!-- ================= ツールウィンドウ: タブ ================= -->
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.ToolWindowTabSelectedActiveBackground}"
-                     Color="{DynamicResource Wcu.Color.Gray.900}" />
+                     Color="{DynamicResource Wcu.Color.Surface.Window}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.ToolWindowTabSelectedActiveText}"
                      Color="{DynamicResource Wcu.Color.Accent.Hover}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.ToolWindowTabSelectedInactiveBackground}"
-                     Color="{DynamicResource Wcu.Color.Gray.900}" />
+                     Color="{DynamicResource Wcu.Color.Surface.Window}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.ToolWindowTabSelectedInactiveText}"
-                     Color="{DynamicResource Wcu.Color.Gray.300}" />
+                     Color="{DynamicResource Wcu.Color.Text.Muted}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.ToolWindowTabUnselectedBackground}"
-                     Color="{DynamicResource Wcu.Color.Gray.850}" />
+                     Color="{DynamicResource Wcu.Color.Surface.Panel}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.ToolWindowTabUnselectedText}"
-                     Color="{DynamicResource Wcu.Color.Gray.400}" />
+                     Color="{DynamicResource Wcu.Color.Text.Secondary}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.ToolWindowTabUnselectedHoveredBackground}"
-                     Color="{DynamicResource Wcu.Color.Gray.850}" />
+                     Color="{DynamicResource Wcu.Color.Surface.Panel}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.ToolWindowTabUnselectedHoveredText}"
                      Color="{DynamicResource Wcu.Color.Accent.Hover}" />
 
     <!-- ================= フローティングウィンドウ ================= -->
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.FloatingDocumentWindowBackground}"
-                     Color="{DynamicResource Wcu.Color.Gray.850}" />
+                     Color="{DynamicResource Wcu.Color.Surface.Panel}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.FloatingDocumentWindowBorder}"
-                     Color="{DynamicResource Wcu.Color.Gray.700}" />
+                     Color="{DynamicResource Wcu.Color.Border.Default}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.FloatingToolWindowBackground}"
-                     Color="{DynamicResource Wcu.Color.Gray.850}" />
+                     Color="{DynamicResource Wcu.Color.Surface.Panel}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.FloatingToolWindowBorder}"
-                     Color="{DynamicResource Wcu.Color.Gray.700}" />
+                     Color="{DynamicResource Wcu.Color.Border.Default}" />
 
     <!-- ================= ナビゲーターウィンドウ(Ctrl+Tab) ================= -->
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.NavigatorWindowBackground}"
-                     Color="{DynamicResource Wcu.Color.Gray.850}" />
+                     Color="{DynamicResource Wcu.Color.Surface.Panel}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.NavigatorWindowForeground}"
-                     Color="{DynamicResource Wcu.Color.Gray.300}" />
+                     Color="{DynamicResource Wcu.Color.Text.Muted}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.NavigatorWindowSelectedBackground}"
                      Color="{DynamicResource Wcu.Color.Accent.Default}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.NavigatorWindowSelectedText}"
-                     Color="{DynamicResource Wcu.Color.White}" />
+                     Color="{DynamicResource Wcu.Color.Text.OnAccent}" />
 
     <!-- ================= ドッキングガイド / ドロッププレビュー ================= -->
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DockingButtonForegroundBrushKey}"
-                     Color="{DynamicResource Wcu.Color.Gray.100}" />
+                     Color="{DynamicResource Wcu.Color.Text.Primary}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.DockingButtonForegroundArrowBrushKey}"
-                     Color="{DynamicResource Wcu.Color.Gray.300}" />
+                     Color="{DynamicResource Wcu.Color.Text.Muted}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.PreviewBoxBorderBrushKey}"
                      Color="{DynamicResource Wcu.Color.Accent.Default}" />
     <SolidColorBrush x:Key="{x:Static reskeys:ResourceKeys.PreviewBoxBackgroundBrushKey}"

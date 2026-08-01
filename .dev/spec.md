@@ -34,14 +34,16 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 - **ダーク先行、切替可能な構造**:
   - テーマ辞書(色定義)とスタイル辞書を分離
   - ブラシ参照は **`DynamicResource` 規約**で統一(初日から徹底。後戻りが高くつくため)。寸法系トークンは切替不要なので `StaticResource` 参照でよい
-  - 当面はダーク辞書のみ実装。ライト辞書は実需が出てから追加
+  - Dark(既定)+ Light(Phase 15 で追加、VS 2022 Light 準拠)の2バリアント
 - 標準コントロールのスタイルは全部を一括で作らず、必要なコントロールから順次自作
 
 ### 4.1 デザイントークン
 
-- **2層構造(プリミティブ→セマンティック)**:
-  - 第1層: パレット(`Wcu.Color.Gray.800` 等)
-  - 第2層: 意味付きトークン(`Wcu.Brush.Surface.Primary` 等)がパレットを参照。テーマ切替はこの層の辞書差し替えで実現
+- **2層構造(セマンティック Color →セマンティック Brush)**(Phase 15 で改訂):
+  - 第1層: 役割ベースの色プリミティブ(`Wcu.Color.Surface.Window` / `Wcu.Color.Text.Primary` 等)。ブラシを使えない消費者(Docking のドックテーマ、Charts のラスタ描画)が DynamicResource で参照する
+  - 第2層: 意味付きブラシ(`Wcu.Brush.Surface.Window` 等)が第1層を参照。コントロールスタイルはこちらを参照する。テーマ切替はトークン辞書の差し替えで実現
+  - リテラル名のパレット(`Wcu.Color.Gray.800` 等)は廃止(「ライトで Gray.900=ほぼ白」という嘘の名前を避ける)。Color 実値は各テーマファイルに直接書く
+  - 注意: コンパイル済み(遅延)辞書では `<StaticResource x:Key>` エイリアスエントリを他エントリから参照できない(実行時 XamlParseException)。エイリアスは使わないこと
   - コンポーネント別トークン(第3層)は原則作らない。状態別色が本当に必要な箇所だけ局所的に許容
 - **命名規約**: ライブラリ接頭辞付きドット区切り文字列キー(例: `Wcu.Brush.Surface.Primary`、`Wcu.Spacing.S`)。衝突安全・grep 容易(MahApps と同じ流儀)
 - **トークン化の範囲**: 色/ブラシ+寸法基本セット(`Wcu.Spacing.XS/S/M/L`、`Wcu.FontSize.S/M/L`、`Wcu.CornerRadius`、`Wcu.IconSize`、`Wcu.ControlHeight`)。全寸法の網羅はしない
@@ -62,7 +64,8 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 
 - **`WcuTheme`(ResourceDictionary 派生)を提供**: 利用側は `App.xaml` に `<ui:WcuTheme Theme="Dark"/>` の1行で全辞書(トークン+全スタイル)が正しい順序でマージされる。辞書の内部構成はライブラリの実装詳細として隠蔽
 - **`ThemeManager` 静的 API**: 実行時テーマ切替(`SetTheme`)と、アクセントカラー変更(`SetAccent(Color)`。Hover/Pressed 等の派生色は HSL 明度調整で自動計算)を提供
-- 内部ファイル構成: `Themes/Tokens.Dark.xaml`(プリミティブ+セマンティック)、`Themes/Controls/*.xaml`(コントロール別スタイル)
+- **`ThemeManager.GetSystemTheme()`**: Windows のアプリモード設定(レジストリ `AppsUseLightTheme`)を読むだけのヘルパー。起動時に使うか・実行中に追従するかはアプリの責務
+- 内部ファイル構成: `Themes/Tokens.Dark.xaml` / `Themes/Tokens.Light.xaml`(セマンティック Color+Brush。両ファイルのキー構成は同一に保つ)、`Themes/Controls/*.xaml`(コントロール別スタイル、テーマ非依存)
 
 ### 4.4 スタイル適用方式
 
@@ -424,6 +427,46 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 - デモ(`ChartsPage`): 解析開始ボタンで `Task.Run` の疑似ソルバー(Thread.Sleep(25) × 最大400反復、途中で荷重ステップ切替の残差ジャンプ)がワーカースレッドから直接 `Append`。荷重-変位曲線 / 2自由度 FRF / von Mises 分布(Box-Muller)/ 素の WcuPlot(移動平均)の例
 - UIA 検証: `.dev/scripts/verify-charts.ps1`(ストリーミング進行と収束検出 → 十字カーソル → 位相パネル切替 → ビン数変更・密度正規化 → 自由プロット)+ `verify-charts-accent.ps1`(アクセント変更後のチャート再配色)
 
+## 6.15 ライトテーマ(Phase 15)
+
+(2026-08-01 の設計インタビューで決定)
+
+### 6.15.1 スコープと配色
+
+- **Tokens.Light.xaml を追加**し、`WcuThemeVariant.Light` を有効化する(切替機構・`ThemeChanged`・`Wcu.Color` プリミティブ供給路は Phase 13/14 で整備済み。設計どおり「トークンファイル追加+enum メンバー追加」で乗る)
+- **配色は VS 2022 Light 準拠**: ダークが VS Dark 系なので同じデザイン言語の対とし、「どのグレー段階をどの面に使うか」の対応関係を写す
+- **アクセントは現行 #007ACC を維持**し、白背景でコントラスト不足が出た箇所のみ VS Light の #005FB8 寄りに調整
+- **既定テーマは Dark のまま**(ダークファースト方針維持)。ライトはオプトイン
+
+### 6.15.2 トークン構造(セマンティック Color キーの正式化)
+
+- **問題**: Docking のテーマ辞書(86箇所)と Charts は `Wcu.Color.Gray.850` / `Wcu.Color.White` などリテラル名のプリミティブを直接参照している。ライトで値だけ反転させると「Gray.900=ほぼ白」という嘘の名前になり、リテラルのままだと外部アセンブリだけ暗いまま残る
+- **決定**: セマンティックな Color キー(`Wcu.Color.Surface.Window` / `Text.Primary` / `Border.Default` など、既存 Brush 層と同じ役割名)を各テーマに追加し、**Docking / Charts はセマンティック Color キー参照へ移行**する。`Wcu.Color.Accent.*`(Phase 13)で作った前例の一般化
+  - 当初案の「StaticResource エイリアス(セマンティック名 → リテラルプリミティブ)」は**実装不可と判明**: コンパイル済み(遅延)辞書ではエイリアスエントリを他エントリ(ブラシの Color 等)から解決できず、実行時 XamlParseException になる
+  - 最終形: リテラル層(Gray.* 等)を**廃止**し、セマンティック Color キーに実値を直接定義。Brush 層はセマンティック Color を StaticResource 参照(単段参照は問題ない)。二重管理も嘘の名前も発生しない
+
+### 6.15.3 ギャラリーと API
+
+- **ナビゲーション(左サイドバー)下部に常設の Dark/Light トグル**(ToggleSwitch)。全ページを見ながらその場で切替できるようにし、目視検証と UIA スクリプトの両方で使う
+- **`ThemeManager.GetSystemTheme()`** を追加(レジストリ `AppsUseLightTheme` の読取のみ)。起動時に使うか・実行中に追従するかはアプリの責務(SystemEvents 監視の自動追従は提供しない)
+
+### 6.15.4 検証
+
+- **自動スクリーンショット横断**: UIA スクリプトで全 17 ページ×両テーマを撮影して目視レビュー(ドッキングシェル・ダイアログ・Toast 含む)
+- **静的検査**(rg のパターン検索で機械的に洗い出し):
+  - コントロールテンプレート内の #RRGGBB ハードコード色(トークン外の色を潰す)
+  - セマンティックブラシの `StaticResource` 参照(実行時切替で更新されないバグの源。トークン→トークンのエイリアスは除く)
+
+### 6.15.5 実装メモ(2026-08-01 完了)
+
+- **トークン**: `Tokens.Light.xaml` 新設(VS 2022 Light 準拠: Window=#EEEEF2 / Panel=#F5F5F7 / Input=#FFFFFF / Border=#CCCEDB、ステータス色は白背景で判読できる濃色 #C42B1C 等)。`Tokens.Dark.xaml` は 6.15.2 の最終形へ再構成。ホバー等のオーバーレイはダーク=半透明白、ライト=半透明黒
+- **Surface.Alternate ブラシを追加**: DataGrid の交互行背景が `#08FFFFFF` ハードコードでライトで不可視だったのをトークン化(静的検査で検出)
+- **アクセント派生のバリアント対応**: `AccentPalette.FromBase(color, variant)` を追加。Muted はダーク=暗色化(-0.35)、ライト=淡色化(+0.45)。`SetTheme` はアクセント上書き中なら新バリアントで再計算する(`ThemeManager` が基準色を保持)
+- **Charts のライト対応**: `WcuChartTheme` はセマンティック Color キー参照へ移行し、シリーズパレットは背景輝度で ダーク用(明色系)/ライト用(濃色系)を自動選択。`HistoryChart` 十字カーソルの文字色も `Text.OnAccent` トークン化
+- **Docking**: `WcuDockResources.xaml` の全 86 ブラシをセマンティック Color キー参照へ移行(Gray.850→Surface.Panel、Gray.700→Border.Default/Control.Hover 等、役割で振り分け)
+- **ギャラリー**: ナビ下部に「ライトテーマ」ToggleSwitch 常設。`--light` 起動引数を追加(スクリーンショット・スモーク用)
+- **検証**: `--smoke` 両テーマ通過、xUnit 94 件通過。`.dev/scripts/capture-themes.ps1`(同一プロセスで Dark 全17ページ → 実行時トグル切替 → Light 全17ページを撮影 = 実行時切替検証を兼ねる)+ `capture-dockshell-light.ps1`(ドッキングシェル)で全数目視レビュー済み。ハードコード色の静的検査では ColorPicker のチェッカー柄/色相グラデーション・WcuWindow 閉じるボタン赤(#E81123)・ドッキングガイド半透明色など「テーマ非依存で意図的」なもののみ残置
+
 ## 7. テスト方針
 
 - **UI に依存しないロジックのみ** xUnit でテストする:
@@ -452,3 +495,4 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 | **Phase 12 — 小物の最終弾**                      | CheckComboBox / MatrixBox / ModelTree インライン名前変更 / KeyGestureBox / Wizard(StepIndicator)                                                                          | ✅ 完了 (2026-08-01) |
 | **Phase 13 — ドッキング**                        | `WpfCustomUI.Docking` 新設(Dirkster.AvalonDock 4.74.1)。WcuDockTheme(ResourceKeys 再配色+Wcu トークン)/ DockLayout 永続化ヘルパー / フルシェルデモ                        | ✅ 完了 (2026-08-01) |
 | **Phase 14 — Charts**                            | `WpfCustomUI.Charts` 新設(ScottPlot 5)。WcuPlot/WcuChartTheme(トークン配色+ThemeChanged 追従)/ ConvergenceMonitor / HistoryChart / FrequencyResponsePlot / HistogramChart | ✅ 完了 (2026-08-01) |
+| **Phase 15 — ライトテーマ**                      | Tokens.Light.xaml(VS 2022 Light 準拠)+ セマンティック Color キー正式化(Docking/Charts 移行)+ ナビ常設テーマトグル + GetSystemTheme() + 全ページ×両テーマ検証             | ✅ 完了 (2026-08-01) |

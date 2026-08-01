@@ -1,6 +1,7 @@
 ﻿using System.Windows;
 using System.Windows.Controls;
 using WpfCustomUI.Controls;
+using WpfCustomUI.Controls.Theming;
 using WpfCustomUI.Gallery.Pages;
 
 namespace WpfCustomUI.Gallery
@@ -39,6 +40,12 @@ namespace WpfCustomUI.Gallery
 
             NavList.SelectedIndex = 0;
 
+            // --light: ライトテーマで起動する(見た目確認・スクリーンショット用)
+            if (Environment.GetCommandLineArgs().Contains("--light"))
+            {
+                ThemeToggle.IsChecked = true;
+            }
+
             // --msgbox: 起動直後に WcuMessageBox を表示する(見た目確認・スクリーンショット用)
             if (Environment.GetCommandLineArgs().Contains("--msgbox"))
             {
@@ -71,6 +78,12 @@ namespace WpfCustomUI.Gallery
                 Application.Current.Shutdown(0);
             }
         }
+
+        private void ThemeToggle_Checked(object sender, RoutedEventArgs e) =>
+            ThemeManager.SetTheme(WcuThemeVariant.Light);
+
+        private void ThemeToggle_Unchecked(object sender, RoutedEventArgs e) =>
+            ThemeManager.SetTheme(WcuThemeVariant.Dark);
 
         private void NavList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {

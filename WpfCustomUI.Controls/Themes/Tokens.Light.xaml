@@ -1,11 +1,8 @@
 <!--
-    ダークテーマのカラートークン(VS Dark 準拠)。
+    ライトテーマのカラートークン(VS 2022 Light 準拠、spec 6.15)。
     第1層: セマンティック Color(Wcu.Color.Surface.* 等) — 役割ベースの色プリミティブ。
-           ブラシを使えない消費者(WpfCustomUI.Docking のドックテーマ、
-           WpfCustomUI.Charts のラスタ描画等)は DynamicResource でこちらを参照する。
     第2層: セマンティックブラシ(Wcu.Brush.*)。
-    スタイルからは必ずセマンティック層を DynamicResource で参照すること(spec 4.1 / 6.15.2)。
-    キー構成は Tokens.Light.xaml と同一に保つこと。
+    キー構成は Tokens.Dark.xaml と同一に保つこと。
 
     注意: コンパイル済み(遅延)辞書では StaticResource エイリアスエントリを
     他エントリから参照できないため、Color は実値で定義する。
@@ -16,47 +13,46 @@
 
     <!-- ================= 第1層: セマンティック Color ================= -->
 
-    <!-- Surface(奥まっているほど暗い) -->
-    <Color x:Key="Wcu.Color.Surface.Window">#1E1E1E</Color>
-    <Color x:Key="Wcu.Color.Surface.Panel">#252526</Color>
-    <Color x:Key="Wcu.Color.Surface.Elevated">#2D2D30</Color>
-    <Color x:Key="Wcu.Color.Surface.Input">#333337</Color>
+    <!-- Surface(手前にあるほど明るい。Window=VS のクローム色、Input=白) -->
+    <Color x:Key="Wcu.Color.Surface.Window">#EEEEF2</Color>
+    <Color x:Key="Wcu.Color.Surface.Panel">#F5F5F7</Color>
+    <Color x:Key="Wcu.Color.Surface.Elevated">#FAFAFC</Color>
+    <Color x:Key="Wcu.Color.Surface.Input">#FFFFFF</Color>
 
     <!-- Text -->
-    <Color x:Key="Wcu.Color.Text.Primary">#F1F1F1</Color>
-    <Color x:Key="Wcu.Color.Text.Muted">#C5C5C5</Color>
-    <Color x:Key="Wcu.Color.Text.Secondary">#969696</Color>
-    <Color x:Key="Wcu.Color.Text.Disabled">#6E6E73</Color>
+    <Color x:Key="Wcu.Color.Text.Primary">#1E1E1E</Color>
+    <Color x:Key="Wcu.Color.Text.Muted">#4B4B52</Color>
+    <Color x:Key="Wcu.Color.Text.Secondary">#6E6E76</Color>
+    <Color x:Key="Wcu.Color.Text.Disabled">#9B9BA3</Color>
     <Color x:Key="Wcu.Color.Text.OnAccent">#FFFFFF</Color>
 
     <!-- Control(ボタン等の対話コントロールの面) -->
-    <Color x:Key="Wcu.Color.Control.Background">#333337</Color>
-    <Color x:Key="Wcu.Color.Control.Hover">#3F3F46</Color>
-    <Color x:Key="Wcu.Color.Control.Pressed">#55555A</Color>
+    <Color x:Key="Wcu.Color.Control.Background">#ECECF0</Color>
+    <Color x:Key="Wcu.Color.Control.Hover">#DADAE0</Color>
+    <Color x:Key="Wcu.Color.Control.Pressed">#C8C8D0</Color>
 
     <!-- Border -->
-    <Color x:Key="Wcu.Color.Border.Default">#3F3F46</Color>
-    <Color x:Key="Wcu.Color.Border.Strong">#55555A</Color>
+    <Color x:Key="Wcu.Color.Border.Default">#CCCEDB</Color>
+    <Color x:Key="Wcu.Color.Border.Strong">#A0A2AE</Color>
 
     <!-- State -->
-    <Color x:Key="Wcu.Color.State.Selected">#094771</Color>
-    <Color x:Key="Wcu.Color.State.SelectedInactive">#37373D</Color>
+    <Color x:Key="Wcu.Color.State.Selected">#C7E0F4</Color>
+    <Color x:Key="Wcu.Color.State.SelectedInactive">#E1E1E6</Color>
 
-    <!-- Status -->
-    <Color x:Key="Wcu.Color.Error">#F14C4C</Color>
-    <Color x:Key="Wcu.Color.Warning">#CCA700</Color>
-    <Color x:Key="Wcu.Color.Success">#89D185</Color>
-    <Color x:Key="Wcu.Color.Info">#75BEFF</Color>
+    <!-- Status(白背景で判読できる濃い目の色) -->
+    <Color x:Key="Wcu.Color.Error">#C42B1C</Color>
+    <Color x:Key="Wcu.Color.Warning">#9D5D00</Color>
+    <Color x:Key="Wcu.Color.Success">#107C10</Color>
+    <Color x:Key="Wcu.Color.Info">#005FB8</Color>
 
     <!--
         アクセントの現在値(ThemeManager.SetAccent で実行時に上書きされ得る色キー)。
-        ブラシを直接使えない場所はこの色キーを DynamicResource で参照すると
-        アクセント変更に追従できる。
+        Muted はダークと違い淡色(選択背景などに濃色テキストが載る前提)。
     -->
     <Color x:Key="Wcu.Color.Accent.Default">#007ACC</Color>
     <Color x:Key="Wcu.Color.Accent.Hover">#1C97EA</Color>
     <Color x:Key="Wcu.Color.Accent.Pressed">#005A9E</Color>
-    <Color x:Key="Wcu.Color.Accent.Muted">#094771</Color>
+    <Color x:Key="Wcu.Color.Accent.Muted">#C7E0F4</Color>
 
     <!-- ================= 第2層: セマンティックブラシ ================= -->
 
@@ -88,12 +84,12 @@
     <SolidColorBrush x:Key="Wcu.Brush.Accent.Pressed" Color="{StaticResource Wcu.Color.Accent.Pressed}" />
     <SolidColorBrush x:Key="Wcu.Brush.Accent.Muted" Color="{StaticResource Wcu.Color.Accent.Muted}" />
 
-    <!-- 交互行など、ごく薄い面の差(半透明白のオーバーレイ) -->
-    <SolidColorBrush x:Key="Wcu.Brush.Surface.Alternate" Color="#08FFFFFF" />
+    <!-- 交互行など、ごく薄い面の差(半透明黒のオーバーレイ) -->
+    <SolidColorBrush x:Key="Wcu.Brush.Surface.Alternate" Color="#06000000" />
 
-    <!-- State(ホバー等は半透明白のオーバーレイ) -->
-    <SolidColorBrush x:Key="Wcu.Brush.State.Hover" Color="#14FFFFFF" />
-    <SolidColorBrush x:Key="Wcu.Brush.State.Pressed" Color="#1FFFFFFF" />
+    <!-- State(ホバー等は半透明黒のオーバーレイ) -->
+    <SolidColorBrush x:Key="Wcu.Brush.State.Hover" Color="#0D000000" />
+    <SolidColorBrush x:Key="Wcu.Brush.State.Pressed" Color="#1A000000" />
     <SolidColorBrush x:Key="Wcu.Brush.State.Selected" Color="{StaticResource Wcu.Color.State.Selected}" />
     <SolidColorBrush x:Key="Wcu.Brush.State.SelectedInactive" Color="{StaticResource Wcu.Color.State.SelectedInactive}" />
 

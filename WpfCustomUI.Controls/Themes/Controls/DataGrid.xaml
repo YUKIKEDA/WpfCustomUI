@@ -458,7 +458,7 @@
         <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Border.Default}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="RowBackground" Value="Transparent" />
-        <Setter Property="AlternatingRowBackground" Value="#08FFFFFF" />
+        <Setter Property="AlternatingRowBackground" Value="{DynamicResource Wcu.Brush.Surface.Alternate}" />
         <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource Wcu.Brush.Border.Default}" />
         <Setter Property="VerticalGridLinesBrush" Value="{DynamicResource Wcu.Brush.Border.Default}" />
         <Setter Property="MinRowHeight" Value="24" />

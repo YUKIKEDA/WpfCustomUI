@@ -236,7 +236,7 @@ public class HistoryChart : Control
             _crosshair = plot.Add.Crosshair(0, 0);
             var accent = ChartHelpers.GetTokenColor("Wcu.Color.Accent.Default", "#007ACC");
             _crosshair.LineColor = accent.WithOpacity(.7);
-            _crosshair.TextColor = ScottPlot.Colors.White;
+            _crosshair.TextColor = ChartHelpers.GetTokenColor("Wcu.Color.Text.OnAccent", "#FFFFFF");
             _crosshair.TextBackgroundColor = accent;
         }
 

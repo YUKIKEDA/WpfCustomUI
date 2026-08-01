@@ -31,6 +31,25 @@ namespace WpfCustomUI.Controls.Tests.Theming
         }
 
         [Fact]
+        public void FromBase_LightVariant_MutedIsLighterThanDefault()
+        {
+            var palette = AccentPalette.FromBase(BaseBlue, WcuThemeVariant.Light);
+
+            var (_, _, defaultL) = ColorMath.ToHsl(palette.Default);
+            var (_, _, mutedL) = ColorMath.ToHsl(palette.Muted);
+
+            Assert.True(mutedL > defaultL, "ライトでは Muted は淡色(明るく)になる");
+        }
+
+        [Fact]
+        public void FromBase_DarkVariant_MatchesDefaultOverload()
+        {
+            var explicitDark = AccentPalette.FromBase(BaseBlue, WcuThemeVariant.Dark);
+
+            Assert.Equal(AccentPalette.FromBase(BaseBlue), explicitDark);
+        }
+
+        [Fact]
         public void FromBase_AllDerivedColorsPreserveHue()
         {
             var palette = AccentPalette.FromBase(BaseBlue);
