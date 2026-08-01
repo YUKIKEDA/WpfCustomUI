@@ -1,0 +1,88 @@
+<UserControl x:Class="WpfCustomUI.Gallery.Pages.DataGridPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d">
+    <UserControl.Resources>
+        <DataTemplate x:Key="MaterialDetailsTemplate">
+            <Border Background="{DynamicResource Wcu.Brush.Surface.Elevated}"
+                    BorderBrush="{DynamicResource Wcu.Brush.Border.Default}"
+                    BorderThickness="0,0,0,1"
+                    Padding="26,6,8,6">
+                <TextBlock Foreground="{DynamicResource Wcu.Brush.Text.Secondary}" TextWrapping="Wrap">
+                    <Run Text="{Binding Name}" FontWeight="SemiBold"
+                         Foreground="{DynamicResource Wcu.Brush.Text.Primary}" />
+                    <Run Text="— せん断弾性率 G =" />
+                    <Run Text="{Binding ShearModulus, Mode=OneWay, StringFormat={}{0:F1} GPa}" />
+                    <Run Text="(等方性材料として E / 2(1+ν) から算出)" />
+                </TextBlock>
+            </Border>
+        </DataTemplate>
+    </UserControl.Resources>
+    <DockPanel>
+        <TextBlock DockPanel.Dock="Top" Text="DataGrid(材料テーブル)"
+                   FontSize="20" FontWeight="SemiBold" Margin="0,0,0,12" />
+
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+            <CheckBox x:Name="GroupCheck" Content="種別でグループ化"
+                      Checked="GroupCheck_Changed" Unchecked="GroupCheck_Changed" />
+            <CheckBox x:Name="DetailsCheck" Content="RowDetails(行先頭の ▶ で開閉)"
+                      IsChecked="True" Margin="16,0,0,0"
+                      Checked="DetailsCheck_Changed" Unchecked="DetailsCheck_Changed" />
+        </StackPanel>
+
+        <TextBlock DockPanel.Dock="Bottom" Margin="0,8,0,0" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Wcu.Brush.Text.Secondary}">
+            <Run Text="・セルをダブルクリック(または F2)で編集。ポアソン比に 0.5 以上を入れると赤枠+ツールチップで検証エラー(セルにホバー)" /><LineBreak />
+            <Run Text="・行先頭の ▶ で詳細(RowDetails)を開閉。複数行を同時に開ける" /><LineBreak />
+            <Run Text="・列ヘッダークリックでソート、境界ドラッグで列幅変更、ヘッダードラッグで列の並べ替え" /><LineBreak />
+            <Run Text="・左上コーナーで全選択。行ヘッダーにはエラーのインジケーター(!)が出る" />
+        </TextBlock>
+
+        <DataGrid x:Name="Grid"
+                  AutoGenerateColumns="False"
+                  HeadersVisibility="All"
+                  CanUserAddRows="False"
+                  RowDetailsVisibilityMode="Collapsed"
+                  RowDetailsTemplate="{StaticResource MaterialDetailsTemplate}">
+            <DataGrid.GroupStyle>
+                <!-- GroupStyle は DependencyObject でないため StaticResource で指定する -->
+                <GroupStyle ContainerStyle="{StaticResource Wcu.DataGrid.GroupItemStyle}" />
+            </DataGrid.GroupStyle>
+            <DataGrid.Columns>
+                <!-- RowDetails を行先頭の ▶ トグルで明示的に開閉(選択追従はレイアウトが跳ねるため使わない) -->
+                <DataGridTemplateColumn x:Name="DetailsColumn" Width="28"
+                                        CanUserResize="False" CanUserReorder="False">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <ToggleButton Style="{StaticResource Wcu.DataGrid.DetailsToggle}"
+                                          IsChecked="{Binding DetailsVisibility,
+                                              RelativeSource={RelativeSource AncestorType=DataGridRow},
+                                              Converter={StaticResource Wcu.DataGrid.VisibilityToBool},
+                                              Mode=TwoWay}" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="名前" Width="*"
+                                    Binding="{Binding Name}" />
+                <DataGridComboBoxColumn x:Name="TypeColumn" Header="種別" Width="110"
+                                        SelectedItemBinding="{Binding Type}" />
+                <DataGridTextColumn Header="ヤング率 E [GPa]" Width="120"
+                                    Binding="{Binding YoungsModulus, ValidatesOnDataErrors=True}" />
+                <DataGridTextColumn Header="ポアソン比 ν" Width="100"
+                                    Binding="{Binding PoissonRatio, ValidatesOnDataErrors=True}" />
+                <DataGridTextColumn Header="密度 ρ [kg/m³]" Width="110"
+                                    Binding="{Binding Density, ValidatesOnDataErrors=True}" />
+                <DataGridCheckBoxColumn Header="有効" Width="50"
+                                        Binding="{Binding IsActive, UpdateSourceTrigger=PropertyChanged}">
+                    <DataGridCheckBoxColumn.ElementStyle>
+                        <Style TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
+                            <Setter Property="HorizontalAlignment" Value="Center" />
+                        </Style>
+                    </DataGridCheckBoxColumn.ElementStyle>
+                </DataGridCheckBoxColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</UserControl>

@@ -158,6 +158,9 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 
 - **WPF 標準 DataGrid のスタイル自作**方式(自作グリッドは工数が非現実的。ソート/編集/仮想化/列操作は実装済み機能を活用)
 - **フル対応**: 列ヘッダー(ソート矢印含む)/行・セルの選択・ホバー/編集セル/検証エラー(赤枠+ツールチップ規約)に加え、行ヘッダー・行詳細(RowDetails)・グループ化ヘッダーまでスタイル化
+- **列スタイルの自動適用**: `DataGridTextColumn` 等は WPF 組み込みの静的既定スタイルを使うためテーマの暗黙スタイルが届かない。`DataGridAssist.AutoApplyColumnStyles`(テーマで既定 ON)が既定スタイルのままの列だけをテーマスタイルに差し替える
+- **検証エラー表示**: エラーは生成されたセル Content に付くため、`DataGridCell` が `Content.(Validation.HasError)` を監視して赤枠+ツールチップを表示。検証エラーが未確定の間、標準 DataGrid はソートを保留する(仕様)
+- **RowDetails**: 選択追従(VisibleWhenSelected)はレイアウトが跳ねるため非推奨。行先頭の ▶ トグル(`Wcu.DataGrid.DetailsToggle` + `Wcu.DataGrid.VisibilityToBool`)で明示的に開閉するパターンを推奨(複数行同時展開可)
 
 ### 6.8.3 ウィンドウクローム・ダイアログ
 
@@ -193,4 +196,4 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 | **Phase 5 — 独立系**                             | ログコンソール / 進捗表示 / カラーマップ凡例(相互独立なので順不同)                                                                                   | ✅ 完了 (2026-08-01) |
 | **Phase 6 — シェル軽量群**                       | GridSplitter / GroupBox / Separator / ToolBar / StatusBar / SearchBox(+PropertyGrid フィルタ改修)                                                   | ✅ 完了 (2026-08-01) |
 | **Phase 7 — ウィンドウ系**                       | WcuWindow(クローム) / WcuDialogWindow / WcuMessageBox / ToastHost / BusyOverlay                                                                      | ✅ 完了 (2026-08-01) |
-| **Phase 8 — DataGrid**                           | 標準 DataGrid のフルスタイル化(最大工数のため独立フェーズ)                                                                                          | 未着手                |
+| **Phase 8 — DataGrid**                           | 標準 DataGrid のフルスタイル化(最大工数のため独立フェーズ)                                                                                          | ✅ 完了 (2026-08-01) |

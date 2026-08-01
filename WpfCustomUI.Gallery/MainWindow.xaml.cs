@@ -19,6 +19,7 @@ namespace WpfCustomUI.Gallery
             ("LogConsole & Progress", () => new LogConsolePage()),
             ("Shell", () => new ShellPage()),
             ("Windows & Dialogs", () => new WindowsPage()),
+            ("DataGrid", () => new DataGridPage()),
         ];
 
         public MainWindow()
