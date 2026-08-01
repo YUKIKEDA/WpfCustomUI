@@ -16,10 +16,15 @@ internal sealed unsafe class GpuMesh : IDisposable
 
     public const uint DisplacementStride = 12;
 
+    /// <summary>グリフインスタンスのストライド(<see cref="ViewportGlyph.FloatsPerInstance"/> × 4 バイト)。</summary>
+    public const uint GlyphInstanceStride = ViewportGlyph.FloatsPerInstance * sizeof(float);
+
     private ComPtr<ID3D11Buffer> _vertexBuffer;
     private ComPtr<ID3D11Buffer> _displacementBuffer;
     private ComPtr<ID3D11Buffer> _triangleIndexBuffer;
     private ComPtr<ID3D11Buffer> _edgeIndexBuffer;
+    private ComPtr<ID3D11Buffer> _glyphInstanceBuffer;
+    private int _glyphCapacityFloats;
 
     private GpuMesh()
     {
@@ -49,6 +54,11 @@ internal sealed unsafe class GpuMesh : IDisposable
     public ID3D11Buffer* TriangleIndexBufferHandle => _triangleIndexBuffer.Handle;
 
     public ID3D11Buffer* EdgeIndexBufferHandle => _edgeIndexBuffer.Handle;
+
+    /// <summary>グリフのインスタンス数(0 ならこのパーツはグリフなし)。</summary>
+    public uint GlyphInstanceCount { get; private set; }
+
+    public ID3D11Buffer* GlyphInstanceBufferHandle => _glyphInstanceBuffer.Handle;
 
     /// <summary>
     /// メッシュモデルから GPU リソースを構築する。座標は origin(シーン中心)で再センタリング済みの
@@ -160,6 +170,54 @@ internal sealed unsafe class GpuMesh : IDisposable
         }
     }
 
+    /// <summary>
+    /// グリフのインスタンスバッファを差し替える(spec 6.21)。容量が足りるときは
+    /// Map/WriteDiscard の部分更新、不足時のみ Dynamic バッファを作り直す。
+    /// data は <see cref="ViewportGlyph.BuildInstances"/> の出力。
+    /// </summary>
+    public void UpdateGlyphInstances(
+        ComPtr<ID3D11Device> device, ComPtr<ID3D11DeviceContext> context, float[] data, int instanceCount)
+    {
+        GlyphInstanceCount = (uint)Math.Max(instanceCount, 0);
+        if (instanceCount <= 0 || data.Length == 0)
+        {
+            return;
+        }
+
+        fixed (float* pData = data)
+        {
+            if (_glyphInstanceBuffer.Handle is null || _glyphCapacityFloats < data.Length)
+            {
+                _glyphInstanceBuffer.Dispose();
+                _glyphInstanceBuffer = default;
+
+                var desc = new BufferDesc
+                {
+                    ByteWidth = (uint)(data.Length * sizeof(float)),
+                    Usage = Usage.Dynamic,
+                    BindFlags = (uint)BindFlag.VertexBuffer,
+                    CPUAccessFlags = (uint)CpuAccessFlag.Write,
+                };
+                var subresource = new SubresourceData { PSysMem = pData };
+                SilkMarshal.ThrowHResult(device.CreateBuffer(in desc, in subresource, ref _glyphInstanceBuffer));
+                _glyphCapacityFloats = data.Length;
+                return;
+            }
+
+            MappedSubresource mapped = default;
+            SilkMarshal.ThrowHResult(context.Map(_glyphInstanceBuffer, 0, Map.WriteDiscard, 0, ref mapped));
+            try
+            {
+                System.Buffer.MemoryCopy(
+                    pData, mapped.PData, _glyphCapacityFloats * sizeof(float), data.Length * sizeof(float));
+            }
+            finally
+            {
+                context.Unmap(_glyphInstanceBuffer, 0);
+            }
+        }
+    }
+
     private static ComPtr<ID3D11Buffer> CreateImmutableBuffer(
         ComPtr<ID3D11Device> device, void* data, uint byteWidth, BindFlag bindFlag)
     {
@@ -182,9 +240,13 @@ internal sealed unsafe class GpuMesh : IDisposable
         _displacementBuffer.Dispose();
         _triangleIndexBuffer.Dispose();
         _edgeIndexBuffer.Dispose();
+        _glyphInstanceBuffer.Dispose();
         _vertexBuffer = default;
         _displacementBuffer = default;
         _triangleIndexBuffer = default;
         _edgeIndexBuffer = default;
+        _glyphInstanceBuffer = default;
+        _glyphCapacityFloats = 0;
+        GlyphInstanceCount = 0;
     }
 }

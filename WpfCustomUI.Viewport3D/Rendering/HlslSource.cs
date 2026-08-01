@@ -21,7 +21,7 @@ internal static class HlslSource
             float4 BelowColor;
             float4 AboveColor;
             float4 ViewportInfo;   // xy=ビューポートのピクセルサイズ, z=ポイント直径(px)
-            float4 DeformParams;   // x=変形スケール(振動アニメ係数込み)
+            float4 DeformParams;   // x=変形スケール(振動アニメ係数込み), y=グリフスケール
             float4 ClipPlane;      // xyz=正規化法線(ローカル座標), w=定数項。無効時 (0,0,0,1)
         };
         """;
@@ -174,6 +174,64 @@ internal static class HlslSource
         uint2 PSMain(PSIn i, uint primId : SV_PrimitiveID) : SV_Target
         {
             return uint2((uint)(ObjectColor.x + 0.5), primId);
+        }
+        """;
+
+    /// <summary>
+    /// ベクトルグリフ(spec 6.21.3)。単位矢印プロトタイプ(slot 0)を
+    /// インスタンスデータ(slot 1: 基点/変位/単位方向/大きさ/色)で回転・スケールして
+    /// DrawIndexedInstanced で描画する。実長 = |v| × DeformParams.y(グリフスケール)。
+    /// クリップはアンカー節点位置で判定し、矢印ごと消す(部分カットしない)。
+    /// </summary>
+    public const string Glyph = Constants + """
+
+        struct VSIn
+        {
+            // slot 0: プロトタイプ頂点(単位矢印、+Z 方向)
+            float3 pos       : POSITION;
+            float3 normal    : NORMAL;
+            // slot 1: インスタンス(節点毎)
+            float3 base_     : TEXCOORD4;
+            float3 disp      : TEXCOORD5;
+            float3 dir       : TEXCOORD6;
+            float  magnitude : TEXCOORD7;
+            float4 color     : COLOR0;
+        };
+
+        struct PSIn
+        {
+            float4 pos    : SV_Position;
+            float3 normal : NORMAL;
+            float4 color  : COLOR0;
+            float  clip   : SV_ClipDistance0;
+        };
+
+        PSIn VSMain(VSIn v)
+        {
+            // 単位方向 w から正規直交基底を作る(ViewportGlyph.ComputeBasis と同式)
+            float3 w = v.dir;
+            float3 helper = abs(w.z) < 0.9 ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0);
+            float3 u = normalize(cross(helper, w));
+            float3 vv = cross(w, u);
+
+            float len = v.magnitude * DeformParams.y; // 実長(太さも比例スケール)
+            float3 anchor = v.base_ + v.disp * DeformParams.x; // 変形追従(spec 6.18 と同式)
+            float3 pos = anchor + (v.pos.x * u + v.pos.y * vv + v.pos.z * w) * len;
+
+            PSIn o;
+            o.pos = mul(float4(pos, 1.0), ViewProj);
+            o.normal = v.normal.x * u + v.normal.y * vv + v.normal.z * w; // 一様スケールなので回転のみ
+            o.color = v.color;
+            o.clip = dot(anchor, ClipPlane.xyz) + ClipPlane.w;
+            return o;
+        }
+
+        float4 PSMain(PSIn i) : SV_Target
+        {
+            // メッシュと同じ両面ヘッドライトシェーディング
+            float3 n = normalize(i.normal);
+            float ndl = abs(dot(n, EyeDirection.xyz));
+            return float4(i.color.rgb * (0.35 + 0.65 * ndl), i.color.a);
         }
         """;
 

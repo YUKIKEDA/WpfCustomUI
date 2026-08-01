@@ -37,7 +37,7 @@ internal struct FrameConstants
     public Vector4 BelowColor;
     public Vector4 AboveColor;
     public Vector4 ViewportInfo; // xy=ピクセルサイズ, z=ポイント直径(px)
-    public Vector4 DeformParams; // x=変形スケール(振動アニメ係数込み)
+    public Vector4 DeformParams; // x=変形スケール(振動アニメ係数込み), y=グリフスケール
     public Vector4 ClipPlane;    // xyz=正規化法線, w=定数項。無効時 (0,0,0,1)
 }
 
@@ -83,12 +83,18 @@ internal sealed unsafe class ViewportRenderer : IDisposable
     private ComPtr<ID3D11PixelShader> _pickPs;
     private ComPtr<ID3D11VertexShader> _pointVs;
     private ComPtr<ID3D11PixelShader> _pointPs;
+    private ComPtr<ID3D11VertexShader> _glyphVs;
+    private ComPtr<ID3D11PixelShader> _glyphPs;
     private ComPtr<ID3D11InputLayout> _meshLayout;
     private ComPtr<ID3D11InputLayout> _lineLayout;
     private ComPtr<ID3D11InputLayout> _pickLayout;
     private ComPtr<ID3D11InputLayout> _pointLayout;
+    private ComPtr<ID3D11InputLayout> _glyphLayout;
     private ComPtr<ID3D11Buffer> _constantBuffer;
     private ComPtr<ID3D11Buffer> _sectionIndicatorBuffer;
+    private ComPtr<ID3D11Buffer> _glyphVertexBuffer;
+    private ComPtr<ID3D11Buffer> _glyphIndexBuffer;
+    private uint _glyphIndexCount;
     private ComPtr<ID3D11RasterizerState> _rasterizerState;
     private ComPtr<ID3D11DepthStencilState> _depthState;
     private ComPtr<ID3D11DepthStencilState> _highlightDepthState;
@@ -276,6 +282,7 @@ internal sealed unsafe class ViewportRenderer : IDisposable
         Vector4 nodeColor,
         float nodePointSizePixels,
         float deformationScale,
+        float glyphScale,
         bool showUndeformedWireframe,
         Vector4 undeformedColor,
         Vector4 clipPlane,
@@ -320,7 +327,7 @@ internal sealed unsafe class ViewportRenderer : IDisposable
             BelowColor = contour.BelowColor,
             AboveColor = contour.AboveColor,
             ViewportInfo = new Vector4(Width, Height, nodePointSizePixels, 0.0f),
-            DeformParams = new Vector4(deformationScale, 0.0f, 0.0f, 0.0f),
+            DeformParams = new Vector4(deformationScale, glyphScale, 0.0f, 0.0f),
             ClipPlane = ViewportSection.DisabledClip,
         };
 
@@ -374,6 +381,37 @@ internal sealed unsafe class ViewportRenderer : IDisposable
             ctx->IASetIndexBuffer(mesh.EdgeIndexBufferHandle, DxgiFormat.FormatR32Uint, 0);
             ctx->IASetPrimitiveTopology(D3DPrimitiveTopology.D3D11PrimitiveTopologyLinelist);
             ctx->DrawIndexed(mesh.EdgeIndexCount, 0, 0);
+        }
+
+        // パス 2.2: ベクトルグリフ(spec 6.21.3)。単位矢印プロトタイプを
+        // DrawIndexedInstanced でインスタンス描画する。不透明ジオメトリとして
+        // 深度書き込みありで描き、メッシュと正しく前後関係を持たせる
+        if (glyphScale > 0.0f && _glyphIndexCount > 0)
+        {
+            var glyphBuffers = stackalloc ID3D11Buffer*[2] { _glyphVertexBuffer.Handle, null };
+            var glyphStrides = stackalloc uint[2] { 24, GpuMesh.GlyphInstanceStride };
+            var glyphOffsets = stackalloc uint[2] { 0, 0 };
+            foreach (var item in items)
+            {
+                var mesh = item.Mesh;
+                if (mesh.GlyphInstanceCount == 0 || mesh.GlyphInstanceBufferHandle is null)
+                {
+                    continue;
+                }
+
+                constants.ScalarParams.Z = 0.0f;
+                constants.ClipPlane = mesh.IsClippable ? clipPlane : ViewportSection.DisabledClip;
+                UploadConstants(in constants);
+
+                glyphBuffers[1] = mesh.GlyphInstanceBufferHandle;
+                ctx->IASetVertexBuffers(0, 2, glyphBuffers, glyphStrides, glyphOffsets);
+                ctx->IASetInputLayout(_glyphLayout.Handle);
+                ctx->VSSetShader(_glyphVs.Handle, null, 0);
+                ctx->PSSetShader(_glyphPs.Handle, null, 0);
+                ctx->IASetIndexBuffer(_glyphIndexBuffer.Handle, DxgiFormat.FormatR32Uint, 0);
+                ctx->IASetPrimitiveTopology(D3DPrimitiveTopology.D3D11PrimitiveTopologyTrianglelist);
+                ctx->DrawIndexedInstanced(_glyphIndexCount, mesh.GlyphInstanceCount, 0, 0, 0);
+            }
         }
 
         // パス 2.5: 非変形ワイヤフレーム重畳(spec 6.18.4)。DeformParams.x=0 で元形状の
@@ -742,6 +780,10 @@ internal sealed unsafe class ViewportRenderer : IDisposable
     public void UpdateMeshDisplacements(GpuMesh mesh, double[]? displacements) =>
         mesh.UpdateDisplacements(_context, displacements);
 
+    /// <summary>グリフのインスタンスバッファを差し替える(spec 6.21)。</summary>
+    public void UpdateMeshGlyphs(GpuMesh mesh, float[] instanceData, int instanceCount) =>
+        mesh.UpdateGlyphInstances(_device, _context, instanceData, instanceCount);
+
     public GpuSelectionMesh? CreateSelectionMesh(
         ViewportMesh mesh,
         IReadOnlyCollection<int> selectedFaces,
@@ -883,6 +925,8 @@ internal sealed unsafe class ViewportRenderer : IDisposable
         using var pickPsCode = CompileShader(HlslSource.Pick, "PSMain", "ps_4_0");
         using var pointVsCode = CompileShader(HlslSource.Point, "VSMain", "vs_4_0");
         using var pointPsCode = CompileShader(HlslSource.Point, "PSMain", "ps_4_0");
+        using var glyphVsCode = CompileShader(HlslSource.Glyph, "VSMain", "vs_4_0");
+        using var glyphPsCode = CompileShader(HlslSource.Glyph, "PSMain", "ps_4_0");
 
         SilkMarshal.ThrowHResult(device->CreateVertexShader(
             meshVsCode.GetBufferPointer(), meshVsCode.GetBufferSize(), null, _meshVs.GetAddressOf()));
@@ -900,16 +944,22 @@ internal sealed unsafe class ViewportRenderer : IDisposable
             pointVsCode.GetBufferPointer(), pointVsCode.GetBufferSize(), null, _pointVs.GetAddressOf()));
         SilkMarshal.ThrowHResult(device->CreatePixelShader(
             pointPsCode.GetBufferPointer(), pointPsCode.GetBufferSize(), null, _pointPs.GetAddressOf()));
+        SilkMarshal.ThrowHResult(device->CreateVertexShader(
+            glyphVsCode.GetBufferPointer(), glyphVsCode.GetBufferSize(), null, _glyphVs.GetAddressOf()));
+        SilkMarshal.ThrowHResult(device->CreatePixelShader(
+            glyphPsCode.GetBufferPointer(), glyphPsCode.GetBufferSize(), null, _glyphPs.GetAddressOf()));
 
         // 入力レイアウト
         var semanticPosition = SilkMarshal.StringToMemory("POSITION");
         var semanticNormal = SilkMarshal.StringToMemory("NORMAL");
         var semanticTexCoord = SilkMarshal.StringToMemory("TEXCOORD");
+        var semanticColor = SilkMarshal.StringToMemory("COLOR");
         try
         {
             fixed (byte* pPosition = semanticPosition)
             fixed (byte* pNormal = semanticNormal)
             fixed (byte* pTexCoord = semanticTexCoord)
+            fixed (byte* pColor = semanticColor)
             {
                 // 変位(TEXCOORD1)は slot 1 の独立バッファから読む(spec 6.18.2)
                 var displacementElement = new InputElementDesc
@@ -1004,6 +1054,78 @@ internal sealed unsafe class ViewportRenderer : IDisposable
                     pointElements, 3,
                     pointVsCode.GetBufferPointer(), pointVsCode.GetBufferSize(),
                     _pointLayout.GetAddressOf()));
+
+                // グリフパス: slot 0 = プロトタイプ頂点(24B)、slot 1 = インスタンス(56B、step 1)
+                var glyphElements = stackalloc InputElementDesc[7]
+                {
+                    new InputElementDesc
+                    {
+                        SemanticName = pPosition,
+                        Format = DxgiFormat.FormatR32G32B32Float,
+                        AlignedByteOffset = 0,
+                        InputSlotClass = InputClassification.PerVertexData,
+                    },
+                    new InputElementDesc
+                    {
+                        SemanticName = pNormal,
+                        Format = DxgiFormat.FormatR32G32B32Float,
+                        AlignedByteOffset = 12,
+                        InputSlotClass = InputClassification.PerVertexData,
+                    },
+                    new InputElementDesc
+                    {
+                        SemanticName = pTexCoord,
+                        SemanticIndex = 4,
+                        Format = DxgiFormat.FormatR32G32B32Float,
+                        InputSlot = 1,
+                        AlignedByteOffset = 0,
+                        InputSlotClass = InputClassification.PerInstanceData,
+                        InstanceDataStepRate = 1,
+                    },
+                    new InputElementDesc
+                    {
+                        SemanticName = pTexCoord,
+                        SemanticIndex = 5,
+                        Format = DxgiFormat.FormatR32G32B32Float,
+                        InputSlot = 1,
+                        AlignedByteOffset = 12,
+                        InputSlotClass = InputClassification.PerInstanceData,
+                        InstanceDataStepRate = 1,
+                    },
+                    new InputElementDesc
+                    {
+                        SemanticName = pTexCoord,
+                        SemanticIndex = 6,
+                        Format = DxgiFormat.FormatR32G32B32Float,
+                        InputSlot = 1,
+                        AlignedByteOffset = 24,
+                        InputSlotClass = InputClassification.PerInstanceData,
+                        InstanceDataStepRate = 1,
+                    },
+                    new InputElementDesc
+                    {
+                        SemanticName = pTexCoord,
+                        SemanticIndex = 7,
+                        Format = DxgiFormat.FormatR32Float,
+                        InputSlot = 1,
+                        AlignedByteOffset = 36,
+                        InputSlotClass = InputClassification.PerInstanceData,
+                        InstanceDataStepRate = 1,
+                    },
+                    new InputElementDesc
+                    {
+                        SemanticName = pColor,
+                        Format = DxgiFormat.FormatR32G32B32A32Float,
+                        InputSlot = 1,
+                        AlignedByteOffset = 40,
+                        InputSlotClass = InputClassification.PerInstanceData,
+                        InstanceDataStepRate = 1,
+                    },
+                };
+                SilkMarshal.ThrowHResult(device->CreateInputLayout(
+                    glyphElements, 7,
+                    glyphVsCode.GetBufferPointer(), glyphVsCode.GetBufferSize(),
+                    _glyphLayout.GetAddressOf()));
             }
         }
         finally
@@ -1011,6 +1133,22 @@ internal sealed unsafe class ViewportRenderer : IDisposable
             semanticPosition.Dispose();
             semanticNormal.Dispose();
             semanticTexCoord.Dispose();
+            semanticColor.Dispose();
+        }
+
+        // 矢印プロトタイプ(単位長、+Z 方向)。全インスタンスで共有する Immutable バッファ
+        var (arrowVertices, arrowIndices) = ViewportGlyph.BuildArrowGeometry();
+        _glyphIndexCount = (uint)arrowIndices.Length;
+        fixed (float* pArrowVertices = arrowVertices)
+        {
+            _glyphVertexBuffer = CreateImmutableBufferRaw(
+                device, pArrowVertices, (uint)(arrowVertices.Length * sizeof(float)), BindFlag.VertexBuffer);
+        }
+
+        fixed (int* pArrowIndices = arrowIndices)
+        {
+            _glyphIndexBuffer = CreateImmutableBufferRaw(
+                device, pArrowIndices, (uint)(arrowIndices.Length * sizeof(int)), BindFlag.IndexBuffer);
         }
 
         // 定数バッファ(動的、フレーム毎 Map/WriteDiscard)
@@ -1106,6 +1244,22 @@ internal sealed unsafe class ViewportRenderer : IDisposable
     }
 
     // ================= 描画ヘルパー =================
+
+    private static ComPtr<ID3D11Buffer> CreateImmutableBufferRaw(
+        ID3D11Device* device, void* data, uint byteWidth, BindFlag bindFlag)
+    {
+        var desc = new BufferDesc
+        {
+            ByteWidth = byteWidth,
+            Usage = Usage.Immutable,
+            BindFlags = (uint)bindFlag,
+        };
+        var subresource = new SubresourceData { PSysMem = data };
+
+        ComPtr<ID3D11Buffer> buffer = default;
+        SilkMarshal.ThrowHResult(device->CreateBuffer(&desc, &subresource, buffer.GetAddressOf()));
+        return buffer;
+    }
 
     private void UploadConstants(in FrameConstants constants)
     {
@@ -1246,12 +1400,17 @@ internal sealed unsafe class ViewportRenderer : IDisposable
         _highlightDepthState.Dispose();
         _depthState.Dispose();
         _rasterizerState.Dispose();
+        _glyphIndexBuffer.Dispose();
+        _glyphVertexBuffer.Dispose();
         _sectionIndicatorBuffer.Dispose();
         _constantBuffer.Dispose();
+        _glyphLayout.Dispose();
         _pointLayout.Dispose();
         _pickLayout.Dispose();
         _lineLayout.Dispose();
         _meshLayout.Dispose();
+        _glyphPs.Dispose();
+        _glyphVs.Dispose();
         _pointPs.Dispose();
         _pointVs.Dispose();
         _pickPs.Dispose();

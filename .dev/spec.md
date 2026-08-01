@@ -747,6 +747,61 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 - ギャラリー「3D Probe」: Kirsch 円孔板(von Mises、24×96 リング格子、孔側二乗詰め)+上面視点開始+単位付きフォーマッター+注釈一覧(削除/全削除)+面外たわみ変位の振動アニメで変形追従デモ
 - 検証: xUnit 122 件(+19)全パス / `verify-viewport-probe.ps1` で UIA ラベル文字列を直接アサート — 遠方場 83.7 MPa(理論 ≈84)・孔縁 232.4 MPa(r≈1.1a の理論 ≈233)・異方性最小値 48.9 MPa が全て Kirsch 厳密解の許容幅内、空クリック/モード OFF/削除/全削除/振動中のチップ追従(停止後 diff=0 の決定性込み)も PASS / 既存 UIA スクリプト 3 本回帰なし / スモークテスト成功 / 両テーマ目視 OK
 
+## 6.21 ビューポート第6弾 — ベクトルグリフ(Phase 21)
+
+(2026-08-01 の設計インタビューで決定)
+
+### 6.21.1 テーマ選定
+
+- **ベクトルグリフ表示(節点ベクトル場→矢印描画)**を採用。コンター(16)→選択(17)→変形(18)→断面(19)→プローブ(20)と揃い、CAE ポスト処理の定番表示で残る最後の大物。Phase 16 から一貫してバックログに残っていた宿題の回収
+- 変位ベクトル・反力・主応力方向など、スカラーコンターでは表現できない「向きを持つ量」の可視化を担う
+- 小粒改善(ホバープリハイライト/貫通選択/エッジ選択/複数断面/ギズモ/変形後法線/注釈ドラッグ)は引き続きバックログ
+
+### 6.21.2 データ API — ViewportMesh.VectorValues(確立済みパターンに追随)
+
+- **`ViewportMesh.VectorValues`**(節点毎 3 成分の単一 double 配列)。`ScalarValues`/`Displacements` と同型で、フィールド切替(変位/反力/主応力)は**アプリが配列を差し替える**(Phase 18 の過渡再生と同じ責務分担)
+- 変位ベクトルを表示する場合は `Displacements` と同じ配列を代入すればよい
+- 表示制御はビューポート側 DP: `ShowGlyphs` / `GlyphScale` / `GlyphStride` / `GlyphColorScale`
+
+### 6.21.3 描画 — GPU インスタンシング(低ポリ 3D 矢印)
+
+- 矢印 1 本分の低ポリジオメトリ(シャフト円柱+コーンヘッド、数十三角形)を **`DrawIndexedInstanced`** で全対象節点分インスタンス描画。WARP でも動作し、既存の自作 HLSL パイプラインに自然に追加できる
+- インスタンスデータ = (基点座標, 変位, ベクトル)。頂点シェーダでベクトル方向への回転基底・長さスケールを適用し、基点は `基点 + 変位 × DeformationScale`(cbuffer)で**変形表示に追従**(フレーム毎のバッファ再構築なし)
+- ライティングは既存メッシュと同じ方式。断面カット(`SV_ClipDistance`)も同じ平面でクリップし、クリップされた節点の矢印は消える(`IsClippable` 準拠)
+- ゼロ/微小ベクトルの節点はスキップ(縮退回転を避ける)
+
+### 6.21.4 スケールと密度
+
+- **`GlyphScale` DP**: 矢印長さ = |v| × GlyphScale。**`GetSuggestedGlyphScale()`** ヘルパ(最大ベクトル長がモデル代表寸法の数%に見える推奨値、`GetSuggestedDeformationScale` と同型)を提供
+- **`GlyphStride` DP**(既定 1 = 全節点): n 節点ごとに 1 本の間引きで大規模メッシュの団子化を回避。空間均等サンプリングは将来拡張
+
+### 6.21.5 色付け — 専用 GlyphColorScale
+
+- **`GlyphColorScale`**(ColorScale 型、null 許容)で |v| → カラーマップ(CAE 慣例)。コンター用 `ColorScale` とは独立(表示中の物理量・値域が異なるため)
+- 既存の ColorScale / LUT 基盤を再利用し、`ColorMapLegend` に同じインスタンスを渡せば凡例も表示できる
+- null のときは単色(アクセント系)フォールバック
+
+### 6.21.6 デモ
+
+- **新ページ「3D Glyphs」**: 内圧を受ける厚肉円筒(Phase 19 と同じ Lamé 厳密解)の**変位ベクトル場** u(r) = Ar + B/r。全て半径方向を向くため正しさが一目で分かる(向き=放射状、長さ=内面側で最大)
+- スケール/ストライドのスライダー+グリフ専用凡例+変形追従(`Displacements` に同配列)+断面カット併用(クリップ節点の矢印が消える)のフェーズ横断統合デモ
+
+### 6.21.7 検証
+
+- **xUnit**: ベクトル→矢印回転基底の構築、ゼロ/微小ベクトルのスキップ判定、ストライド間引きの列挙、`GetSuggestedGlyphScale`、|v|→色(純粋関数化して検証)
+- **UIA**: ピクセル差分(グリフ ON/OFF・スケール変更・ストライド変更・断面クリップ併用で矢印が消える・OFF→ON の決定性 diff=0)+ 両テーマスクリーンショット目視。インスタンシング経路は WARP フォールバック込みで UIA 実行時に検証される
+
+### 6.21.8 実装メモ(2026-08-01 完了)
+
+- **ViewportGlyph**(internal 静的クラス): 純粋関数群。`BuildArrowGeometry`(単位矢印 +Z 方向、シャフト円柱+底面キャップ+コーン基部ディスク+コーン側面、12 セグメント既定)/ `ComputeBasis`(単位方向→正規直交基底、HLSL と同式で u×v=w の右手系)/ `BuildInstances`(節点→インスタンス float 列、ストライド間引き・ゼロ/NaN ベクトルスキップ・再センタリング・変位同梱・|v|→色)
+- **インスタンスデータ = 14 float/件**(基点 3+変位 3+単位方向 3+|v| 1+RGBA 4、56B)。矢印の実長は |v| × GlyphScale を**シェーダ側**(cbuffer `DeformParams.y`)で掛けるため、スケール変更ではバッファを再構築しない。色は `ColorScale.GetColor()`(対数・範囲外・離散レベルはコンター凡例と同じ扱い)を CPU で焼き込む
+- **HLSL Glyph シェーダ**: VS で方向ベクトルから回転基底を構築し、`基点 + 変位 × DeformParams.x + R·(頂点 × 実長)`。法線は回転のみ(一様スケール)でメッシュと同じ両面ヘッドライト。クリップは**アンカー節点位置**で `SV_ClipDistance` 判定し矢印ごと消す(部分カットなし、注釈の自動非表示と同じ思想)
+- **GpuMesh**: `UpdateGlyphInstances`(Dynamic バッファ、容量内なら Map/WriteDiscard、不足時のみ再作成)。レンダラーはエッジ重畳の後(パス 2.2)に深度書き込みありで `DrawIndexedInstanced`(矢印プロトタイプは Immutable で全パーツ共有)
+- **WcuViewport**: `ShowGlyphs`(既定 true)/ `GlyphScale`(既定 1.0、0 以上)/ `GlyphStride`(既定 1)/ `GlyphColorScale`(PropertyChanged 購読で自動追従)DP + `GetSuggestedGlyphScale()`。`_glyphDirty` フラグで VectorValues/Displacements 差し替え・ストライド・カラースケール・テーマ変更(単色フォールバックのアクセント色が焼き込みのため)・ジオメトリ再構築時にインスタンスを作り直す
+- **ギャラリー「3D Glyphs」**: 厚肉円筒(a=30/b=50mm、p=100MPa、E=200GPa、ν=0.3)の Lamé 変位場 u(r) = (pa²/E(b²−a²))·((1−ν)r + (1+ν)b²/r)。内面 0.0364mm(赤)→外面 0.0281mm(青)の放射状矢印。スケールスライダー(推奨値×0.2〜3.0)/ストライド 1〜16/断面カット併用/振動アニメ変形追従/グリフ専用 ColorMapLegend の参照実装。メッシュは単色+ShowEdges=false で矢印を主役にする
+- **検証**: xUnit 22 件追加(計 138)+ `.dev/scripts/verify-viewport-glyphs.ps1`(ON/OFF diff・決定性 diff=0・スケール・ストライド・クリップ併用・振動アニメ追従・両テーマスクショ)全パス。既存 verify-viewport-section.ps1 の回帰も確認
+- **バックログ**: 空間均等サンプリング間引き / 矢印の画面固定サイズモード / テンソルグリフ(主応力の 3 軸表示)
+
 ## 7. テスト方針
 
 - **UI に依存しないロジックのみ** xUnit でテストする:
@@ -781,3 +836,4 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 | **Phase 18 — ビューポート第3弾(変形+アニメ)**    | ViewportMesh.Displacements + GPU 頂点シェーダ変形(スケールは cbuffer、フレーム切替は部分更新) / DeformationScale / モード振動アニメ内蔵 / 非変形ワイヤフレーム重畳 / 自動スケール推奨値 / PlaybackBar 連携デモ      | ✅ 完了 (2026-08-01) |
 | **Phase 19 — ビューポート第4弾(断面カット)**     | SectionPlane DP(点+法線、SV_ClipDistance で全パス一貫クリップ) / ViewportMesh.IsClippable / 平面インジケータ内蔵(操作 UI はアプリ側) / 新ページ「3D Section」(厚肉円筒 Lamé 解+アプリ断面スライス参照実装)          | ✅ 完了 (2026-08-01) |
 | **Phase 20 — ビューポート第5弾(プローブ+注釈)**  | PickMode.Probe(GPU ID ピック+レイ交差+重心補間) / ProbePicked イベント+ProbeLabelFormatter / Annotations(節点バインド主体、変形追従、WPF オーバーレイチップ+リーダーライン) / 新ページ「3D Probe」(Kirsch 円孔板)      | ✅ 完了 (2026-08-01) |
+| **Phase 21 — ビューポート第6弾(ベクトルグリフ)** | ViewportMesh.VectorValues + GPU インスタンシング低ポリ 3D 矢印(変形追従・断面クリップ対応) / ShowGlyphs / GlyphScale+推奨値ヘルパ / GlyphStride 間引き / GlyphColorScale(\|v\|→カラーマップ) / 新ページ「3D Glyphs」(厚肉円筒 Lamé 変位場)  | ✅ 完了 (2026-08-01) |

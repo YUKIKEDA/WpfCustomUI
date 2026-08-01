@@ -23,6 +23,7 @@ public sealed class ViewportMesh : INotifyPropertyChanged
     private int[] _triangleIndices = [];
     private double[]? _scalarValues;
     private double[]? _displacements;
+    private double[]? _vectorValues;
     private Color _color = Color.FromRgb(0xB0, 0xB4, 0xBC);
     private bool _isVisible = true;
     private bool _showEdges = true;
@@ -73,6 +74,19 @@ public sealed class ViewportMesh : INotifyPropertyChanged
     {
         get => _displacements;
         set => SetField(ref _displacements, value);
+    }
+
+    /// <summary>
+    /// 節点ベクトル値(グリフ表示用、spec 6.21)。vx0,vy0,vz0, vx1,... の平坦な配列(長さ 3×節点数)。
+    /// null ならこのパーツはグリフを描かない。矢印の長さは |v| × <see cref="WcuViewport.GlyphScale"/>、
+    /// 色は |v| を <see cref="WcuViewport.GlyphColorScale"/> で変換した値。
+    /// フィールド切替(変位/反力/主応力など)は配列インスタンスの差し替えで行う。
+    /// 変位ベクトルを表示する場合は <see cref="Displacements"/> と同じ配列を代入すればよい。
+    /// </summary>
+    public double[]? VectorValues
+    {
+        get => _vectorValues;
+        set => SetField(ref _vectorValues, value);
     }
 
     /// <summary>単色表示時のパーツ色(コンター無効時・スカラーなし時に使用)。</summary>

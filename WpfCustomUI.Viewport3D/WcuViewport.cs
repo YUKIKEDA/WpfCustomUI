@@ -127,6 +127,28 @@ public class WcuViewport : Control
             nameof(ShowSectionPlaneIndicator), typeof(bool), typeof(WcuViewport),
             new PropertyMetadata(true, OnVisualOptionChanged));
 
+    public static readonly DependencyProperty ShowGlyphsProperty =
+        DependencyProperty.Register(
+            nameof(ShowGlyphs), typeof(bool), typeof(WcuViewport),
+            new PropertyMetadata(true, OnVisualOptionChanged));
+
+    public static readonly DependencyProperty GlyphScaleProperty =
+        DependencyProperty.Register(
+            nameof(GlyphScale), typeof(double), typeof(WcuViewport),
+            new PropertyMetadata(1.0, OnVisualOptionChanged),
+            v => double.IsFinite((double)v) && (double)v >= 0.0);
+
+    public static readonly DependencyProperty GlyphStrideProperty =
+        DependencyProperty.Register(
+            nameof(GlyphStride), typeof(int), typeof(WcuViewport),
+            new PropertyMetadata(1, OnGlyphDataOptionChanged),
+            v => (int)v >= 1);
+
+    public static readonly DependencyProperty GlyphColorScaleProperty =
+        DependencyProperty.Register(
+            nameof(GlyphColorScale), typeof(ColorScale), typeof(WcuViewport),
+            new PropertyMetadata(null, OnGlyphColorScaleChanged));
+
     private readonly List<(ViewportMesh Source, GpuMesh Gpu)> _gpuMeshes = [];
     private readonly HashSet<ViewportMesh> _displacementDirtyMeshes = [];
     private readonly List<RenderItem> _renderItems = [];
@@ -147,6 +169,7 @@ public class WcuViewport : Control
     private bool _geometryDirty = true;
     private bool _colorMapDirty = true;
     private bool _selectionDirty = true;
+    private bool _glyphDirty = true;
     private bool _hasAutoFitted;
     private bool _renderBroken;
     private int _consecutiveFailures;
@@ -377,6 +400,48 @@ public class WcuViewport : Control
     }
 
     /// <summary>
+    /// ベクトルグリフ(矢印)の表示(spec 6.21)。<see cref="ViewportMesh.VectorValues"/> を持つ
+    /// メッシュだけが対象。既定 true(ベクトル場がなければ何も描かれない)。
+    /// </summary>
+    public bool ShowGlyphs
+    {
+        get => (bool)GetValue(ShowGlyphsProperty);
+        set => SetValue(ShowGlyphsProperty, value);
+    }
+
+    /// <summary>
+    /// グリフスケール(spec 6.21.4)。矢印の長さ = |v| × GlyphScale(太さも比例)。
+    /// 推奨値は <see cref="GetSuggestedGlyphScale"/> で得られる。0 で非表示相当。
+    /// </summary>
+    public double GlyphScale
+    {
+        get => (double)GetValue(GlyphScaleProperty);
+        set => SetValue(GlyphScaleProperty, value);
+    }
+
+    /// <summary>
+    /// グリフの間引き(spec 6.21.4)。n 節点ごとに 1 本の矢印を立てる(既定 1 = 全節点)。
+    /// 大規模メッシュでの団子化を回避する。
+    /// </summary>
+    public int GlyphStride
+    {
+        get => (int)GetValue(GlyphStrideProperty);
+        set => SetValue(GlyphStrideProperty, value);
+    }
+
+    /// <summary>
+    /// グリフ配色用のカラースケール(spec 6.21.5)。|v| をこのスケールで色に変換する。
+    /// コンター用 <see cref="ColorScale"/> とは独立(表示中の物理量・値域が異なるため)。
+    /// <see cref="Controls.ColorMapLegend"/> に同じインスタンスを渡せば凡例も表示できる。
+    /// null のときはアクセント系の単色フォールバック。
+    /// </summary>
+    public ColorScale? GlyphColorScale
+    {
+        get => (ColorScale?)GetValue(GlyphColorScaleProperty);
+        set => SetValue(GlyphColorScaleProperty, value);
+    }
+
+    /// <summary>
     /// 「最大変位がモデル代表寸法(境界ボックス対角長)の 5% に見える」推奨変形スケールを返す
     /// (spec 6.18.4)。変位を持つメッシュがない場合は 1.0。適用はアプリの責務
     /// (<c>viewport.DeformationScale = viewport.GetSuggestedDeformationScale()</c>)。
@@ -401,6 +466,34 @@ public class WcuViewport : Control
                 + (bounds.MaxZ - bounds.MinZ) * (bounds.MaxZ - bounds.MinZ));
 
         return ViewportDeformation.ComputeSuggestedScale(maxDisplacement, diagonal, targetFraction);
+    }
+
+    /// <summary>
+    /// 「最大ベクトル長の矢印がモデル代表寸法(境界ボックス対角長)の 5% に見える」推奨グリフ
+    /// スケールを返す(spec 6.21.4、<see cref="GetSuggestedDeformationScale"/> と同型)。
+    /// ベクトル場を持つメッシュがない場合は 1.0。適用はアプリの責務
+    /// (<c>viewport.GlyphScale = viewport.GetSuggestedGlyphScale()</c>)。
+    /// </summary>
+    public double GetSuggestedGlyphScale(double targetFraction = ViewportDeformation.DefaultTargetFraction)
+    {
+        var meshes = MeshSource?.OfType<ViewportMesh>() ?? [];
+        var bounds = Bounds3D.Empty;
+        var maxMagnitude = 0.0;
+        foreach (var mesh in meshes)
+        {
+            bounds = bounds.Union(ViewportGeometry.ComputeBounds(mesh.Positions));
+            maxMagnitude = Math.Max(
+                maxMagnitude, ViewportDeformation.GetMaxDisplacementMagnitude(mesh.VectorValues));
+        }
+
+        var diagonal = bounds.IsEmpty
+            ? 0.0
+            : Math.Sqrt(
+                (bounds.MaxX - bounds.MinX) * (bounds.MaxX - bounds.MinX)
+                + (bounds.MaxY - bounds.MinY) * (bounds.MaxY - bounds.MinY)
+                + (bounds.MaxZ - bounds.MinZ) * (bounds.MaxZ - bounds.MinZ));
+
+        return ViewportDeformation.ComputeSuggestedScale(maxMagnitude, diagonal, targetFraction);
     }
 
     /// <summary>
@@ -480,6 +573,9 @@ public class WcuViewport : Control
     }
 
     private void OnDeformationAnimationTick(object? sender, EventArgs e) => InvalidateViewport();
+
+    /// <summary>現在の実効グリフスケール(ShowGlyphs=false は 0 = 描画スキップ)。</summary>
+    private float GetEffectiveGlyphScale() => ShowGlyphs ? (float)GlyphScale : 0.0f;
 
     /// <summary>現在の実効変形スケール(振動アニメの正弦係数込み)を求める。</summary>
     private float GetEffectiveDeformationScale()
@@ -586,7 +682,12 @@ public class WcuViewport : Control
         ReleaseRenderer();
     }
 
-    private void OnThemeChanged(object? sender, EventArgs e) => InvalidateViewport();
+    private void OnThemeChanged(object? sender, EventArgs e)
+    {
+        // グリフの単色フォールバックはアクセント色をインスタンスに焼き込むため作り直す
+        _glyphDirty = true;
+        InvalidateViewport();
+    }
 
     private void RenderFrame()
     {
@@ -611,6 +712,7 @@ public class WcuViewport : Control
 
             EnsureGeometry();
             EnsureDisplacements();
+            EnsureGlyphs();
             EnsureColorMap();
             EnsureSelectionBuffers();
             BuildRenderLists();
@@ -705,7 +807,8 @@ public class WcuViewport : Control
                 _renderItems, in viewProj, Camera.GetEyeDirection(),
                 ToVector4(background, 1.0), in contour, ShowContours, ToVector4(edgeColor, 1.0),
                 highlightColor, nodeColor, pointSize,
-                _lastEffectiveDeformationScale, ShowUndeformedWireframe, ToVector4(edgeColor, 0.35),
+                _lastEffectiveDeformationScale, GetEffectiveGlyphScale(),
+                ShowUndeformedWireframe, ToVector4(edgeColor, 0.35),
                 clipPlane, sectionIndicator, sectionFill, sectionLine);
 
             _d3dImage.AddDirtyRect(new Int32Rect(0, 0, _renderer.Width, _renderer.Height));
@@ -725,7 +828,8 @@ public class WcuViewport : Control
             _renderItems, in viewProj, Camera.GetEyeDirection(),
             ToVector4(background, 1.0), in contour, ShowContours, ToVector4(edgeColor, 1.0),
             highlightColor, nodeColor, pointSize,
-            _lastEffectiveDeformationScale, ShowUndeformedWireframe, ToVector4(edgeColor, 0.35),
+            _lastEffectiveDeformationScale, GetEffectiveGlyphScale(),
+            ShowUndeformedWireframe, ToVector4(edgeColor, 0.35),
             clipPlane, sectionIndicator, sectionFill, sectionLine);
 
         if (_softwareBitmap is null || sizeChanged)
@@ -770,6 +874,7 @@ public class WcuViewport : Control
         _gpuMeshes.Clear();
         _displacementDirtyMeshes.Clear(); // 再構築で最新の変位が取り込まれる
         _geometryDirty = false;
+        _glyphDirty = true; // GpuMesh 再作成でインスタンスバッファも失われる
 
         var meshes = MeshSource?.OfType<ViewportMesh>().ToList() ?? [];
 
@@ -833,6 +938,29 @@ public class WcuViewport : Control
         }
 
         _displacementDirtyMeshes.Clear();
+    }
+
+    /// <summary>
+    /// グリフのインスタンスバッファをメッシュのベクトル場と同期する(spec 6.21)。
+    /// VectorValues / Displacements / GlyphStride / GlyphColorScale / テーマ変更で再構築される。
+    /// </summary>
+    private void EnsureGlyphs()
+    {
+        if (!_glyphDirty || _renderer is null)
+        {
+            return;
+        }
+
+        _glyphDirty = false;
+        var accent = GetTokenColor("Wcu.Color.Accent.Default", Color.FromRgb(0x00, 0x7A, 0xCC));
+        var fallback = ToVector4(accent, 1.0);
+        foreach (var (source, gpu) in _gpuMeshes)
+        {
+            var data = ViewportGlyph.BuildInstances(
+                source, GlyphStride, _originX, _originY, _originZ,
+                GlyphColorScale, fallback, out var count);
+            _renderer.UpdateMeshGlyphs(gpu, data, count);
+        }
     }
 
     /// <summary>選択ハイライトの GPU バッファを選択モデルと同期する(spec 6.17.3)。</summary>
@@ -1032,9 +1160,16 @@ public class WcuViewport : Control
         }
         else if (e.PropertyName == nameof(ViewportMesh.Displacements) && sender is ViewportMesh mesh)
         {
-            // 変位差し替えは軽量経路: 変位バッファのみ更新+選択節点クワッド再構築
+            // 変位差し替えは軽量経路: 変位バッファのみ更新+選択節点クワッド再構築。
+            // グリフのインスタンスデータにも変位が同梱されるため作り直す(spec 6.21.3)
             _displacementDirtyMeshes.Add(mesh);
             _selectionDirty = true;
+            _glyphDirty = true;
+        }
+        else if (e.PropertyName == nameof(ViewportMesh.VectorValues))
+        {
+            // フィールド切替(変位/反力など)はインスタンスバッファの再構築のみ(spec 6.21.2)
+            _glyphDirty = true;
         }
 
         InvalidateViewport();
@@ -1066,6 +1201,38 @@ public class WcuViewport : Control
 
     private static void OnVisualOptionChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
         ((WcuViewport)d).InvalidateViewport();
+
+    /// <summary>インスタンスバッファの再構築が必要なグリフ設定(ストライド等)の変更。</summary>
+    private static void OnGlyphDataOptionChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var viewport = (WcuViewport)d;
+        viewport._glyphDirty = true;
+        viewport.InvalidateViewport();
+    }
+
+    private static void OnGlyphColorScaleChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var viewport = (WcuViewport)d;
+
+        if (e.OldValue is ColorScale oldScale)
+        {
+            oldScale.PropertyChanged -= viewport.OnGlyphColorScalePropertyChanged;
+        }
+
+        if (e.NewValue is ColorScale newScale)
+        {
+            newScale.PropertyChanged += viewport.OnGlyphColorScalePropertyChanged;
+        }
+
+        viewport._glyphDirty = true;
+        viewport.InvalidateViewport();
+    }
+
+    private void OnGlyphColorScalePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        _glyphDirty = true;
+        InvalidateViewport();
+    }
 
     private static void OnSectionPlaneChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -1826,6 +1993,7 @@ public class WcuViewport : Control
         _geometryDirty = true;
         _colorMapDirty = true;
         _selectionDirty = true;
+        _glyphDirty = true;
         _lastBackBuffer = 0;
         _d3dImage = null;
         _softwareBitmap = null;

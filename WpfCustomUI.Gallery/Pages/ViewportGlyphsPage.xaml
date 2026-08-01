@@ -1,0 +1,85 @@
+<UserControl x:Class="WpfCustomUI.Gallery.Pages.ViewportGlyphsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ui="https://schemas.wpfcustomui.dev/xaml"
+             mc:Ignorable="d">
+    <UserControl.Resources>
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Secondary}" />
+            <Setter Property="FontSize" Value="{StaticResource Wcu.FontSize.S}" />
+            <Setter Property="Margin" Value="0,2,0,0" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+    </UserControl.Resources>
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel MaxWidth="860" HorizontalAlignment="Left">
+
+            <TextBlock Text="3D Glyphs (ベクトルグリフ)" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,4" />
+            <TextBlock Style="{StaticResource Hint}"
+                       Text="ViewportMesh.VectorValues(節点毎 3 成分)に与えたベクトル場を、GPU インスタンシングの低ポリ 3D 矢印で描画する。長さ=|v|×GlyphScale、色=|v|→GlyphColorScale(コンター用 ColorScale とは独立)。デモは内圧を受ける厚肉円筒(Lamé 厳密解)の変位ベクトル場 u(r)=Ar+B/r。全て半径方向を向き、内面側で最長になる。" />
+
+            <WrapPanel Margin="0,12,0,4" ItemHeight="28">
+                <ui:ToggleSwitch x:Name="GlyphToggle" Content="グリフ表示" IsChecked="True"
+                                 AutomationProperties.AutomationId="GlyphToggle"
+                                 Checked="OnGlyphToggleChanged" Unchecked="OnGlyphToggleChanged" />
+                <ui:ToggleSwitch x:Name="ClipToggle" Content="断面カット併用" Margin="20,0,0,0"
+                                 AutomationProperties.AutomationId="ClipToggle"
+                                 Checked="OnClipToggleChanged" Unchecked="OnClipToggleChanged" />
+                <ui:ToggleSwitch x:Name="AnimToggle" Content="振動アニメ(変形追従)" Margin="20,0,0,0"
+                                 AutomationProperties.AutomationId="AnimToggle"
+                                 Checked="OnAnimToggleChanged" Unchecked="OnAnimToggleChanged" />
+                <Button Content="Fit" Click="OnFitClick" MinWidth="60" Margin="20,0,0,0" />
+            </WrapPanel>
+
+            <WrapPanel Margin="0,4,0,8" ItemHeight="30">
+                <TextBlock Text="スケール:" VerticalAlignment="Center" />
+                <Slider x:Name="ScaleSlider" Width="180" Minimum="0.2" Maximum="3.0" Value="1.0"
+                        VerticalAlignment="Center" Margin="8,0,0,0"
+                        AutomationProperties.AutomationId="ScaleSlider"
+                        ValueChanged="OnScaleChanged" />
+                <TextBlock x:Name="ScaleLabel" Text="×1.0" VerticalAlignment="Center" Margin="8,0,0,0"
+                           MinWidth="48" />
+                <TextBlock Text="ストライド:" VerticalAlignment="Center" Margin="20,0,0,0" />
+                <ComboBox x:Name="StrideCombo" Width="72" Margin="8,0,0,0" SelectedIndex="2"
+                          AutomationProperties.AutomationId="StrideCombo"
+                          SelectionChanged="OnStrideChanged">
+                    <ComboBoxItem Content="1" />
+                    <ComboBoxItem Content="2" />
+                    <ComboBoxItem Content="4" />
+                    <ComboBoxItem Content="8" />
+                    <ComboBoxItem Content="16" />
+                </ComboBox>
+            </WrapPanel>
+
+            <!-- ビューポート + グリフ専用凡例 -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <ui:WcuViewport x:Name="Viewport"
+                                Grid.Column="0"
+                                Height="440"
+                                DeformationScale="0" />
+
+                <ui:ColorMapLegend x:Name="GlyphLegend"
+                                   Grid.Column="1"
+                                   Height="280"
+                                   Margin="16,0,0,0"
+                                   VerticalAlignment="Center"
+                                   Title="|u| [mm]" />
+            </Grid>
+            <TextBlock x:Name="RendererInfo" Style="{StaticResource Hint}" />
+
+            <TextBlock Style="{StaticResource Hint}" Margin="0,12,0,0"
+                       Text="矢印はメッシュ(単色)の節点に立ち、GlyphStride で間引ける。断面カット併用時はクリップされた節点の矢印ごと消える(IsClippable 準拠)。振動アニメでは Displacements に同じ変位配列を渡してあり、矢印の基点が変形表示に追従する(インスタンスデータの再構築なし、頂点シェーダで追従)。GlyphColorScale を ColorMapLegend に渡せばグリフ専用の凡例になる。" />
+            <TextBlock Style="{StaticResource Hint}" Margin="0,6,0,0"
+                       Text="Lamé 解(内圧 p=100 MPa、a=30 / b=50 mm、E=200 GPa、ν=0.3): u(r) = (pa²/E(b²−a²))·((1−ν)r + (1+ν)b²/r)。内面 u(30) ≈ 0.0364 mm、外面 u(50) ≈ 0.0281 mm で、矢印の長さと色が内面側ほど大きい。" />
+
+            <Border Height="24" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
