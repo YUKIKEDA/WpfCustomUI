@@ -15,11 +15,12 @@ internal static class HlslSource
         {
             row_major float4x4 ViewProj;
             float4 EyeDirection;   // xyz = 注視点->視点の単位ベクトル(ヘッドライト光源)
-            float4 ObjectColor;    // 単色時のパーツ色 / エッジパスでは線色
+            float4 ObjectColor;    // 単色時のパーツ色 / エッジパスでは線色 / ピックパスでは x=パーツID
             float4 ScalarParams;   // x=min, y=1/range, z=コンター有効, w=対数スケール
             float4 NaNColor;
             float4 BelowColor;
             float4 AboveColor;
+            float4 ViewportInfo;   // xy=ビューポートのピクセルサイズ, z=ポイント直径(px)
         };
         """;
 
@@ -123,6 +124,74 @@ internal static class HlslSource
 
         float4 PSMain(PSIn i) : SV_Target
         {
+            return ObjectColor;
+        }
+        """;
+
+    /// <summary>
+    /// GPU ID ピッキングパス(spec 6.17.1)。R32G32_UInt ターゲットに
+    /// R=パーツID+1(0=背景)、G=三角形インデックス(SV_PrimitiveID)を書き込む。
+    /// </summary>
+    public const string Pick = Constants + """
+
+        struct VSIn
+        {
+            float3 pos : POSITION;
+        };
+
+        struct PSIn
+        {
+            float4 pos : SV_Position;
+        };
+
+        PSIn VSMain(VSIn v)
+        {
+            PSIn o;
+            o.pos = mul(float4(v.pos, 1.0), ViewProj);
+            return o;
+        }
+
+        uint2 PSMain(PSIn i, uint primId : SV_PrimitiveID) : SV_Target
+        {
+            return uint2((uint)(ObjectColor.x + 0.5), primId);
+        }
+        """;
+
+    /// <summary>
+    /// 選択節点のポイント描画(spec 6.17.3)。節点位置+コーナーオフセット([-0.5, 0.5]²)の
+    /// 6 頂点クワッドをクリップ空間でピクセルサイズに拡張し、円形に discard する。
+    /// </summary>
+    public const string Point = Constants + """
+
+        struct VSIn
+        {
+            float3 pos    : POSITION;
+            float2 corner : TEXCOORD0;
+        };
+
+        struct PSIn
+        {
+            float4 pos    : SV_Position;
+            float2 corner : TEXCOORD0;
+        };
+
+        PSIn VSMain(VSIn v)
+        {
+            PSIn o;
+            float4 clip = mul(float4(v.pos, 1.0), ViewProj);
+            clip.z -= 0.001 * clip.w; // 面の上に確実に見えるよう手前へ
+            clip.xy += v.corner * ViewportInfo.z * (2.0 / ViewportInfo.xy) * clip.w;
+            o.pos = clip;
+            o.corner = v.corner;
+            return o;
+        }
+
+        float4 PSMain(PSIn i) : SV_Target
+        {
+            if (dot(i.corner, i.corner) > 0.25)
+            {
+                discard; // 丸ポイント化
+            }
             return ObjectColor;
         }
         """;

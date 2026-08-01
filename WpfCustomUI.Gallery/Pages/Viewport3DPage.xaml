@@ -18,7 +18,7 @@
 
             <TextBlock Text="3D Viewport (Direct3D 11)" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,4" />
             <TextBlock Style="{StaticResource Hint}"
-                       Text="WpfCustomUI.Viewport3D は Silk.NET の D3D11 バインディング+D3DImage による自作エンジン(依存は Silk.NET のみ、コアは依存ゼロのまま)。中ボタンドラッグ=回転 / Shift+中ボタン=パン / ホイール=カーソル位置へズーム / 中ボタンダブルクリック=Fit。左ボタンは将来のピッキング用に予約。" />
+                       Text="WpfCustomUI.Viewport3D は Silk.NET の D3D11 バインディング+D3DImage による自作エンジン(依存は Silk.NET のみ、コアは依存ゼロのまま)。中ボタンドラッグ=回転 / Shift+中ボタン=パン / ホイール=カーソル位置へズーム / 中ボタンダブルクリック=Fit。選択モードでは左クリック=選択 / Ctrl+クリック=トグル / 左ドラッグ=矩形選択(可視のみ)。右上の ViewCube か下の視点ボタンで標準視点へジャンプできる。" />
 
             <!-- 操作列 -->
             <WrapPanel Margin="0,12,0,8" ItemHeight="28">
@@ -31,6 +31,34 @@
                 <ui:ToggleSwitch x:Name="BossToggle" Content="ボスを表示" IsChecked="True"
                                  Checked="OnBossChanged" Unchecked="OnBossChanged" Margin="20,0,0,0" />
                 <Button Content="Fit" Click="OnFitClick" MinWidth="60" Margin="20,0,0,0" />
+            </WrapPanel>
+
+            <!-- 選択(Phase 17) -->
+            <WrapPanel Margin="0,0,0,4" ItemHeight="26">
+                <TextBlock Text="選択:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <RadioButton x:Name="PickNoneRadio" Content="なし" GroupName="PickMode" IsChecked="True"
+                             VerticalAlignment="Center" Checked="OnPickModeChanged" />
+                <RadioButton x:Name="PickPartRadio" Content="パーツ" GroupName="PickMode"
+                             VerticalAlignment="Center" Margin="12,0,0,0" Checked="OnPickModeChanged" />
+                <RadioButton x:Name="PickFaceRadio" Content="面" GroupName="PickMode"
+                             VerticalAlignment="Center" Margin="12,0,0,0" Checked="OnPickModeChanged" />
+                <RadioButton x:Name="PickNodeRadio" Content="節点" GroupName="PickMode"
+                             VerticalAlignment="Center" Margin="12,0,0,0" Checked="OnPickModeChanged" />
+                <Button Content="選択解除" Click="OnClearSelectionClick" Margin="20,0,0,0" />
+                <TextBlock x:Name="SelectionSummary"
+                           AutomationProperties.AutomationId="SelectionSummary"
+                           Text="Parts: 0, Faces: 0, Nodes: 0"
+                           VerticalAlignment="Center" Margin="16,0,0,0"
+                           Foreground="{DynamicResource Wcu.Brush.Text.Secondary}" />
+            </WrapPanel>
+
+            <!-- 標準視点(Phase 17) -->
+            <WrapPanel Margin="0,0,0,8" ItemHeight="26">
+                <TextBlock Text="視点:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <Button Content="正面" Tag="Front" Click="OnStandardViewClick" MinWidth="48" />
+                <Button Content="右" Tag="Right" Click="OnStandardViewClick" MinWidth="48" Margin="6,0,0,0" />
+                <Button Content="上" Tag="Top" Click="OnStandardViewClick" MinWidth="48" Margin="6,0,0,0" />
+                <Button Content="等角" Tag="Isometric" Click="OnStandardViewClick" MinWidth="48" Margin="6,0,0,0" />
             </WrapPanel>
 
             <!-- ビューポート + 凡例 -->
@@ -59,6 +87,8 @@
                        Text="デモ: 円孔付き平板の一軸引張(Kirsch の厳密解による応力集中、孔縁で公称応力の 3 倍)。ViewportMesh(節点座標 + 三角形インデックス + 節点スカラー)を MeshSource にバインドし、ColorScale は右の ColorMapLegend と同一インスタンスを共有している。FEM 要素→三角形化はアプリ責務(このページでは構造格子から直接生成)。座標は double で受けて内部で再センタリング後に GPU へ送るため、大座標値のモデルでもジッタしない。" />
             <TextBlock Style="{StaticResource Hint}" Margin="0,6,0,0"
                        Text="描画はオンデマンド(操作・変更時のみ)。テーマ切替には自動追従し、GPU がない環境では WARP(ソフトウェア)+WriteableBitmap 経路に自動フォールバックする。" />
+            <TextBlock Style="{StaticResource Hint}" Margin="0,6,0,0"
+                       Text="選択は GPU ID ピッキング(パーツ ID+三角形 ID をオフスクリーン描画してピクセル読み出し)。コストは解像度依存でメッシュ規模に依らない。結果は ViewportSelection モデルに入り、面/節点は描画レベルのインデックスで通知される(FEM 要素への逆引きはアプリ責務)。ハイライト(アクセント色の面オーバーレイ+節点ポイント)はコントロール内蔵。" />
 
             <Border Height="24" />
         </StackPanel>

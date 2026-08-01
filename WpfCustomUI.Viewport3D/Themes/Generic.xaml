@@ -6,7 +6,8 @@
     <!--
         WcuViewport 既定スタイル。
         描画本体は D3DImage / WriteableBitmap を持つ PART_Image、
-        軸トライアッドは PART_TriadCanvas に WPF オーバーレイとして描かれる
+        軸トライアッド+矩形選択のラバーバンドは PART_TriadCanvas(ヒットテスト不可)、
+        クリック式 ViewCube は PART_ViewCubeCanvas(ヒットテスト可)に WPF オーバーレイとして描かれる
         (D3DImage は WPF 合成にネイティブ統合されるため、この重ね合わせが成立する)。
     -->
     <Style TargetType="{x:Type local:WcuViewport}">
@@ -24,6 +25,7 @@
                         <Grid ClipToBounds="True">
                             <Image x:Name="PART_Image" Stretch="Fill" />
                             <Canvas x:Name="PART_TriadCanvas" IsHitTestVisible="False" />
+                            <Canvas x:Name="PART_ViewCubeCanvas" Background="{x:Null}" />
                         </Grid>
                     </Border>
                 </ControlTemplate>

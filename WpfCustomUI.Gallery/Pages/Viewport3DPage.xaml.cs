@@ -36,11 +36,19 @@ public partial class Viewport3DPage : UserControl
 
         Viewport.ColorScale = _scale;
         Viewport.MeshSource = _meshes;
+        Viewport.SelectionChanged += OnSelectionChanged;
         Legend.Scale = _scale;
 
         Loaded += (_, _) => RendererInfo.Text = Viewport.IsSoftwareRendering
             ? "レンダリング経路: WARP(ソフトウェア)+ WriteableBitmap フォールバック"
             : "レンダリング経路: ハードウェア D3D11 + D3DImage(共有サーフェス)";
+    }
+
+    private void OnSelectionChanged(object? sender, EventArgs e)
+    {
+        var selection = Viewport.Selection;
+        SelectionSummary.Text =
+            $"Parts: {selection.PartCount}, Faces: {selection.FaceCount}, Nodes: {selection.NodeCount}";
     }
 
     /// <summary>
@@ -217,4 +225,31 @@ public partial class Viewport3DPage : UserControl
     }
 
     private void OnFitClick(object sender, RoutedEventArgs e) => Viewport.FitToView();
+
+    private void OnPickModeChanged(object sender, RoutedEventArgs e)
+    {
+        if (Viewport is null)
+        {
+            return;
+        }
+
+        Viewport.PickMode = true switch
+        {
+            _ when PickPartRadio.IsChecked == true => ViewportPickMode.Part,
+            _ when PickFaceRadio.IsChecked == true => ViewportPickMode.Face,
+            _ when PickNodeRadio.IsChecked == true => ViewportPickMode.Node,
+            _ => ViewportPickMode.None,
+        };
+    }
+
+    private void OnClearSelectionClick(object sender, RoutedEventArgs e) => Viewport.Selection.Clear();
+
+    private void OnStandardViewClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string tag }
+            && Enum.TryParse<ViewportStandardView>(tag, out var view))
+        {
+            Viewport.SetStandardView(view);
+        }
+    }
 }

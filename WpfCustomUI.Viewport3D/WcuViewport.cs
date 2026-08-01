@@ -18,12 +18,16 @@ using WpfCustomUI.Viewport3D.Rendering;
 namespace WpfCustomUI.Viewport3D;
 
 /// <summary>
-/// D3D11 自作エンジンによる 3D ビューポートコントロール(spec 6.16)。
+/// D3D11 自作エンジンによる 3D ビューポートコントロール(spec 6.16 / 6.17)。
 /// <para>
 /// - 表示: <see cref="MeshSource"/> にバインドした <see cref="ViewportMesh"/> 群を
 ///   ライティング付き単色、または節点スカラー+<see cref="ColorScale"/> のコンターで描画する。
 /// - カメラ: 中ボタンドラッグ=回転 / Shift+中ボタン=パン / ホイール=カーソル位置へズーム /
-///   中ボタンダブルクリック=Fit。左ボタンは将来のピッキング用に予約(spec 6.16.4)。
+///   中ボタンダブルクリック=Fit(spec 6.16.4)。
+/// - 選択: <see cref="PickMode"/> を設定すると左クリック=置換選択 / Ctrl+クリック=トグル /
+///   左ドラッグ=矩形選択(可視のみ)。結果は <see cref="Selection"/> モデルに反映され、
+///   ハイライト描画はコントロールが内蔵する(spec 6.17)。
+/// - 視点: <see cref="SetStandardView"/> と右上のクリック式 ViewCube(補間アニメーション付き)。
 /// - 描画はオンデマンド(変更・操作時のみ)。テーマ変更には <see cref="ThemeManager.ThemeChanged"/> で追従する。
 /// - 表示経路はハードウェアなら D3DImage(エアスペース問題なし)、
 ///   WARP / D3D9 不可環境では WriteableBitmap へ自動フォールバックする。
@@ -31,12 +35,16 @@ namespace WpfCustomUI.Viewport3D;
 /// </summary>
 [TemplatePart(Name = PartImage, Type = typeof(Image))]
 [TemplatePart(Name = PartTriadCanvas, Type = typeof(Canvas))]
+[TemplatePart(Name = PartViewCubeCanvas, Type = typeof(Canvas))]
 public class WcuViewport : Control
 {
     private const string PartImage = "PART_Image";
     private const string PartTriadCanvas = "PART_TriadCanvas";
+    private const string PartViewCubeCanvas = "PART_ViewCubeCanvas";
     private const double TriadArmLength = 36.0;
     private const double TriadMargin = 56.0;
+    private const double RubberBandThresholdDip = 4.0;
+    private const double ViewAnimationDurationMs = 150.0;
 
     public static readonly DependencyProperty MeshSourceProperty =
         DependencyProperty.Register(
@@ -73,11 +81,26 @@ public class WcuViewport : Control
             nameof(ShowAxisTriad), typeof(bool), typeof(WcuViewport),
             new PropertyMetadata(true, OnVisualOptionChanged));
 
+    public static readonly DependencyProperty ShowViewCubeProperty =
+        DependencyProperty.Register(
+            nameof(ShowViewCube), typeof(bool), typeof(WcuViewport),
+            new PropertyMetadata(true, OnVisualOptionChanged));
+
+    public static readonly DependencyProperty PickModeProperty =
+        DependencyProperty.Register(
+            nameof(PickMode), typeof(ViewportPickMode), typeof(WcuViewport),
+            new PropertyMetadata(ViewportPickMode.None, OnPickModeChanged));
+
     private readonly List<(ViewportMesh Source, GpuMesh Gpu)> _gpuMeshes = [];
-    private readonly List<GpuMesh> _renderList = [];
+    private readonly List<RenderItem> _renderItems = [];
+    private readonly List<GpuMesh> _visibleGpus = [];
+    private readonly List<ViewportMesh> _visibleSources = [];
+    private readonly Dictionary<ViewportMesh, GpuSelectionMesh> _selectionGpu = [];
 
     private Image? _image;
     private Canvas? _triadCanvas;
+    private Canvas? _viewCubeCanvas;
+    private ViewCubeOverlay? _viewCube;
     private ViewportRenderer? _renderer;
     private D3DImage? _d3dImage;
     private WriteableBitmap? _softwareBitmap;
@@ -86,20 +109,36 @@ public class WcuViewport : Control
     private bool _renderQueued;
     private bool _geometryDirty = true;
     private bool _colorMapDirty = true;
+    private bool _selectionDirty = true;
     private bool _hasAutoFitted;
     private bool _renderBroken;
     private int _consecutiveFailures;
 
     private Bounds3D _localBounds = Bounds3D.Empty;
+    private double _originX;
+    private double _originY;
+    private double _originZ;
 
     // マウス操作状態
     private Point _lastMousePosition;
     private bool _isOrbiting;
     private bool _isPanning;
+    private bool _isPicking;
+    private bool _isRubberBanding;
+    private Point _pickStart;
 
-    // 軸トライアッドの WPF オーバーレイ要素
+    // 視点補間アニメーション
+    private bool _isAnimatingView;
+    private DateTime _animationStart;
+    private double _animStartYaw;
+    private double _animStartPitch;
+    private double _animDeltaYaw;
+    private double _animDeltaPitch;
+
+    // 軸トライアッド+ラバーバンドの WPF オーバーレイ要素
     private readonly Line[] _triadLines = new Line[3];
     private readonly TextBlock[] _triadLabels = new TextBlock[3];
+    private Rectangle? _rubberBand;
 
     static WcuViewport()
     {
@@ -112,9 +151,15 @@ public class WcuViewport : Control
         Camera = new ViewportCamera();
         Camera.Changed += (_, _) => InvalidateViewport();
 
+        Selection = new ViewportSelection();
+        Selection.Changed += OnSelectionModelChanged;
+
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
+
+    /// <summary>選択内容が変わったときに発火する(<see cref="Selection"/> の Changed の転送)。</summary>
+    public event EventHandler? SelectionChanged;
 
     /// <summary>表示するメッシュのコレクション(通常 ObservableCollection&lt;ViewportMesh&gt;)。</summary>
     public IEnumerable? MeshSource
@@ -163,8 +208,30 @@ public class WcuViewport : Control
         set => SetValue(ShowAxisTriadProperty, value);
     }
 
+    /// <summary>右上隅のクリック式 ViewCube 表示(spec 6.17.5)。</summary>
+    public bool ShowViewCube
+    {
+        get => (bool)GetValue(ShowViewCubeProperty);
+        set => SetValue(ShowViewCubeProperty, value);
+    }
+
+    /// <summary>
+    /// 左ボタンピッキングの選択粒度(spec 6.17.2)。None(既定)では左ボタンは何もしない。
+    /// </summary>
+    public ViewportPickMode PickMode
+    {
+        get => (ViewportPickMode)GetValue(PickModeProperty);
+        set => SetValue(PickModeProperty, value);
+    }
+
     /// <summary>カメラ。アプリから直接操作(視点の保存/復元など)できる。</summary>
     public ViewportCamera Camera { get; }
+
+    /// <summary>
+    /// 選択状態モデル(spec 6.17.3)。ピッキング操作の結果が反映され、
+    /// プログラムから操作(ModelTree 連動など)してもハイライトは自動追従する。
+    /// </summary>
+    public ViewportSelection Selection { get; }
 
     /// <summary>WARP(ソフトウェアラスタライザ)で動作しているか。</summary>
     public bool IsSoftwareRendering => _renderer?.IsSoftwareRendering ?? false;
@@ -177,6 +244,71 @@ public class WcuViewport : Control
         {
             Camera.FitToBounds(_localBounds);
         }
+    }
+
+    /// <summary>
+    /// 標準視点へ切り替える(spec 6.17.5)。既定では短い補間アニメーション(150ms)で
+    /// 視点を移動し、空間把握を保つ。注視点と距離は変えない。
+    /// </summary>
+    public void SetStandardView(ViewportStandardView view, bool animate = true)
+    {
+        var (yaw, pitch) = ViewportCamera.GetStandardViewAngles(view, UpAxis);
+        AnimateOrientationTo(yaw, pitch, animate);
+    }
+
+    private void AnimateOrientationTo(double targetYaw, double targetPitch, bool animate)
+    {
+        StopViewAnimation();
+
+        if (!animate || !IsLoaded)
+        {
+            Camera.SetOrientation(targetYaw, targetPitch);
+            return;
+        }
+
+        _animStartYaw = Camera.Yaw;
+        _animStartPitch = Camera.Pitch;
+        _animDeltaYaw = NormalizeSignedAngle(targetYaw - _animStartYaw); // 最短経路
+        _animDeltaPitch = targetPitch - _animStartPitch;
+        _animationStart = DateTime.UtcNow;
+        _isAnimatingView = true;
+        CompositionTarget.Rendering += OnViewAnimationTick;
+    }
+
+    private void OnViewAnimationTick(object? sender, EventArgs e)
+    {
+        var t = (DateTime.UtcNow - _animationStart).TotalMilliseconds / ViewAnimationDurationMs;
+        if (t >= 1.0)
+        {
+            Camera.SetOrientation(_animStartYaw + _animDeltaYaw, _animStartPitch + _animDeltaPitch);
+            StopViewAnimation();
+            return;
+        }
+
+        var eased = 1.0 - Math.Pow(1.0 - t, 3.0); // ease-out cubic
+        Camera.SetOrientation(_animStartYaw + _animDeltaYaw * eased, _animStartPitch + _animDeltaPitch * eased);
+    }
+
+    private void StopViewAnimation()
+    {
+        if (_isAnimatingView)
+        {
+            _isAnimatingView = false;
+            CompositionTarget.Rendering -= OnViewAnimationTick;
+        }
+    }
+
+    /// <summary>角度差を [-π, π] へ正規化する(Yaw 補間の最短経路用)。</summary>
+    private static double NormalizeSignedAngle(double angle)
+    {
+        var twoPi = 2.0 * Math.PI;
+        angle %= twoPi;
+        return angle switch
+        {
+            > Math.PI => angle - twoPi,
+            < -Math.PI => angle + twoPi,
+            _ => angle,
+        };
     }
 
     /// <summary>UI テスト自動化からビューポート領域を特定できるようにする。</summary>
@@ -195,8 +327,23 @@ public class WcuViewport : Control
         base.OnApplyTemplate();
         _image = GetTemplateChild(PartImage) as Image;
         _triadCanvas = GetTemplateChild(PartTriadCanvas) as Canvas;
+        _viewCubeCanvas = GetTemplateChild(PartViewCubeCanvas) as Canvas;
         SetupTriadOverlay();
+        SetupViewCube();
         InvalidateViewport();
+    }
+
+    private void SetupViewCube()
+    {
+        if (_viewCubeCanvas is null)
+        {
+            _viewCube = null;
+            return;
+        }
+
+        _viewCubeCanvas.Children.Clear();
+        _viewCube = new ViewCubeOverlay(_viewCubeCanvas);
+        _viewCube.OrientationRequested += (yaw, pitch) => AnimateOrientationTo(yaw, pitch, animate: true);
     }
 
     // ================= 描画スケジューリング =================
@@ -233,6 +380,8 @@ public class WcuViewport : Control
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         ThemeManager.ThemeChanged -= OnThemeChanged;
+        StopViewAnimation();
+        CancelPicking();
         ReleaseRenderer();
     }
 
@@ -261,37 +410,33 @@ public class WcuViewport : Control
 
             EnsureGeometry();
             EnsureColorMap();
+            EnsureSelectionBuffers();
+            BuildRenderLists();
 
             var aspect = (double)pixelWidth / pixelHeight;
             var viewProj = Camera.GetViewMatrix() * Camera.GetProjectionMatrix(aspect);
             var contour = BuildContourSettings();
 
-            _renderList.Clear();
-            foreach (var (source, gpu) in _gpuMeshes)
-            {
-                if (!source.IsVisible)
-                {
-                    continue;
-                }
-
-                gpu.Color = ToVector4(source.Color, source.Opacity);
-                gpu.ShowEdges = ShowEdges && source.ShowEdges;
-                _renderList.Add(gpu);
-            }
-
             var background = GetTokenColor("Wcu.Color.Surface.Window", Color.FromRgb(0x1E, 0x1E, 0x1E));
             var edgeColor = GetTokenColor("Wcu.Color.Text.Muted", Color.FromRgb(0xC5, 0xC5, 0xC5));
+            var accent = GetTokenColor("Wcu.Color.Accent.Default", Color.FromRgb(0x00, 0x7A, 0xCC));
+            var highlightColor = ToVector4(accent, 0.55);
+            var nodeColor = ToVector4(accent, 1.0);
+            var pointSize = (float)(7.0 * dpi.DpiScaleX);
 
             if (_renderer.CanUseD3DImage)
             {
-                PresentViaD3DImage(sizeChanged, viewProj, contour, background, edgeColor);
+                PresentViaD3DImage(sizeChanged, viewProj, contour, background, edgeColor,
+                    highlightColor, nodeColor, pointSize);
             }
             else
             {
-                PresentViaWriteableBitmap(sizeChanged, viewProj, contour, background, edgeColor);
+                PresentViaWriteableBitmap(sizeChanged, viewProj, contour, background, edgeColor,
+                    highlightColor, nodeColor, pointSize);
             }
 
             UpdateTriadOverlay();
+            _viewCube?.Update(Camera, ActualWidth, ActualHeight, ShowViewCube);
             _consecutiveFailures = 0;
         }
         catch (Exception e) when (e is not OutOfMemoryException)
@@ -311,7 +456,8 @@ public class WcuViewport : Control
     }
 
     private void PresentViaD3DImage(
-        bool sizeChanged, Matrix4x4 viewProj, ContourSettings contour, Color background, Color edgeColor)
+        bool sizeChanged, Matrix4x4 viewProj, ContourSettings contour, Color background, Color edgeColor,
+        Vector4 highlightColor, Vector4 nodeColor, float pointSize)
     {
         if (_d3dImage is null)
         {
@@ -337,8 +483,9 @@ public class WcuViewport : Control
             }
 
             _renderer.Render(
-                _renderList, in viewProj, Camera.GetEyeDirection(),
-                ToVector4(background, 1.0), in contour, ShowContours, ToVector4(edgeColor, 1.0));
+                _renderItems, in viewProj, Camera.GetEyeDirection(),
+                ToVector4(background, 1.0), in contour, ShowContours, ToVector4(edgeColor, 1.0),
+                highlightColor, nodeColor, pointSize);
 
             _d3dImage.AddDirtyRect(new Int32Rect(0, 0, _renderer.Width, _renderer.Height));
         }
@@ -349,11 +496,13 @@ public class WcuViewport : Control
     }
 
     private void PresentViaWriteableBitmap(
-        bool sizeChanged, Matrix4x4 viewProj, ContourSettings contour, Color background, Color edgeColor)
+        bool sizeChanged, Matrix4x4 viewProj, ContourSettings contour, Color background, Color edgeColor,
+        Vector4 highlightColor, Vector4 nodeColor, float pointSize)
     {
         _renderer!.Render(
-            _renderList, in viewProj, Camera.GetEyeDirection(),
-            ToVector4(background, 1.0), in contour, ShowContours, ToVector4(edgeColor, 1.0));
+            _renderItems, in viewProj, Camera.GetEyeDirection(),
+            ToVector4(background, 1.0), in contour, ShowContours, ToVector4(edgeColor, 1.0),
+            highlightColor, nodeColor, pointSize);
 
         if (_softwareBitmap is null || sizeChanged)
         {
@@ -398,6 +547,12 @@ public class WcuViewport : Control
         _geometryDirty = false;
 
         var meshes = MeshSource?.OfType<ViewportMesh>().ToList() ?? [];
+
+        // MeshSource から消えたパーツの選択を掃除し、ジオメトリ差し替えに追従して
+        // 選択バッファも作り直す
+        Selection.PruneTo(meshes);
+        _selectionDirty = true;
+
         var bounds = Bounds3D.Empty;
         foreach (var mesh in meshes)
         {
@@ -412,6 +567,7 @@ public class WcuViewport : Control
 
         // シーン中心で再センタリング(spec 6.16.3: 大座標対策)
         var (ox, oy, oz) = (bounds.CenterX, bounds.CenterY, bounds.CenterZ);
+        (_originX, _originY, _originZ) = (ox, oy, oz);
         _localBounds = new Bounds3D(
             bounds.MinX - ox, bounds.MinY - oy, bounds.MinZ - oz,
             bounds.MaxX - ox, bounds.MaxY - oy, bounds.MaxZ - oz);
@@ -429,6 +585,63 @@ public class WcuViewport : Control
         {
             _hasAutoFitted = true;
             Camera.FitToBounds(_localBounds);
+        }
+    }
+
+    /// <summary>選択ハイライトの GPU バッファを選択モデルと同期する(spec 6.17.3)。</summary>
+    private void EnsureSelectionBuffers()
+    {
+        if (!_selectionDirty || _renderer is null)
+        {
+            return;
+        }
+
+        _selectionDirty = false;
+        foreach (var gpu in _selectionGpu.Values)
+        {
+            gpu.Dispose();
+        }
+
+        _selectionGpu.Clear();
+
+        foreach (var (source, _) in _gpuMeshes)
+        {
+            var faces = Selection.GetSelectedFaces(source);
+            var nodes = Selection.GetSelectedNodes(source);
+            if (faces.Count == 0 && nodes.Count == 0)
+            {
+                continue;
+            }
+
+            var gpu = _renderer.CreateSelectionMesh(source, faces, nodes, _originX, _originY, _originZ);
+            if (gpu is not null)
+            {
+                _selectionGpu[source] = gpu;
+            }
+        }
+    }
+
+    /// <summary>可視メッシュの描画リストとピック用の対応リストを組み立てる。</summary>
+    private void BuildRenderLists()
+    {
+        _renderItems.Clear();
+        _visibleGpus.Clear();
+        _visibleSources.Clear();
+
+        foreach (var (source, gpu) in _gpuMeshes)
+        {
+            if (!source.IsVisible)
+            {
+                continue;
+            }
+
+            gpu.Color = ToVector4(source.Color, source.Opacity);
+            gpu.ShowEdges = ShowEdges && source.ShowEdges;
+
+            _selectionGpu.TryGetValue(source, out var selection);
+            _renderItems.Add(new RenderItem(gpu, selection, Selection.IsPartSelected(source)));
+            _visibleGpus.Add(gpu);
+            _visibleSources.Add(source);
         }
     }
 
@@ -600,21 +813,55 @@ public class WcuViewport : Control
     private static void OnVisualOptionChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
         ((WcuViewport)d).InvalidateViewport();
 
+    private static void OnPickModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var viewport = (WcuViewport)d;
+        // ピックモード中は十字カーソルで「選択操作中」を示す(spec 6.17.4)
+        viewport.Cursor = (ViewportPickMode)e.NewValue != ViewportPickMode.None ? Cursors.Cross : null;
+        viewport.CancelPicking();
+    }
+
+    private void OnSelectionModelChanged(object? sender, EventArgs e)
+    {
+        _selectionDirty = true;
+        InvalidateViewport();
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     private static void OnProjectionChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
         ((WcuViewport)d).Camera.Projection = (ViewportProjection)e.NewValue;
 
     private static void OnUpAxisChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
         ((WcuViewport)d).Camera.UpAxis = (ViewportUpAxis)e.NewValue;
 
-    // ================= マウス操作(spec 6.16.4) =================
+    // ================= マウス操作(spec 6.16.4 / 6.17.4) =================
 
     protected override void OnMouseDown(MouseButtonEventArgs e)
     {
         base.OnMouseDown(e);
+
+        if (e.ChangedButton == MouseButton.Left)
+        {
+            if (PickMode == ViewportPickMode.None || _isOrbiting || _isPanning)
+            {
+                return;
+            }
+
+            _isPicking = true;
+            _isRubberBanding = false;
+            _pickStart = e.GetPosition(this);
+            Focus();
+            CaptureMouse();
+            e.Handled = true;
+            return;
+        }
+
         if (e.ChangedButton != MouseButton.Middle)
         {
             return;
         }
+
+        CancelPicking();
 
         if (e.ClickCount == 2)
         {
@@ -641,15 +888,35 @@ public class WcuViewport : Control
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
+
+        if (_isPicking)
+        {
+            var position = e.GetPosition(this);
+            if (!_isRubberBanding
+                && (Math.Abs(position.X - _pickStart.X) > RubberBandThresholdDip
+                    || Math.Abs(position.Y - _pickStart.Y) > RubberBandThresholdDip))
+            {
+                _isRubberBanding = true;
+            }
+
+            if (_isRubberBanding)
+            {
+                UpdateRubberBand(_pickStart, position);
+            }
+
+            e.Handled = true;
+            return;
+        }
+
         if (!_isOrbiting && !_isPanning)
         {
             return;
         }
 
-        var position = e.GetPosition(this);
-        var dx = position.X - _lastMousePosition.X;
-        var dy = position.Y - _lastMousePosition.Y;
-        _lastMousePosition = position;
+        var current = e.GetPosition(this);
+        var dx = current.X - _lastMousePosition.X;
+        var dy = current.Y - _lastMousePosition.Y;
+        _lastMousePosition = current;
 
         var dpi = VisualTreeHelper.GetDpi(this);
 
@@ -671,6 +938,28 @@ public class WcuViewport : Control
     protected override void OnMouseUp(MouseButtonEventArgs e)
     {
         base.OnMouseUp(e);
+
+        if (e.ChangedButton == MouseButton.Left && _isPicking)
+        {
+            var position = e.GetPosition(this);
+            var wasRubberBanding = _isRubberBanding;
+            var rubberBandStart = _pickStart;
+            CancelPicking();
+
+            var additive = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
+            if (wasRubberBanding)
+            {
+                SelectInRectangle(rubberBandStart, position, additive);
+            }
+            else
+            {
+                SelectAtPoint(position, additive);
+            }
+
+            e.Handled = true;
+            return;
+        }
+
         if (e.ChangedButton == MouseButton.Middle && (_isOrbiting || _isPanning))
         {
             _isOrbiting = false;
@@ -678,6 +967,206 @@ public class WcuViewport : Control
             ReleaseMouseCapture();
             e.Handled = true;
         }
+    }
+
+    /// <summary>進行中のピック操作(ラバーバンド含む)を中止して状態を戻す。</summary>
+    private void CancelPicking()
+    {
+        if (_isPicking)
+        {
+            _isPicking = false;
+            _isRubberBanding = false;
+            ReleaseMouseCapture();
+        }
+
+        if (_rubberBand is not null)
+        {
+            _rubberBand.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void UpdateRubberBand(Point start, Point end)
+    {
+        if (_rubberBand is null)
+        {
+            return;
+        }
+
+        var x = Math.Min(start.X, end.X);
+        var y = Math.Min(start.Y, end.Y);
+        Canvas.SetLeft(_rubberBand, x);
+        Canvas.SetTop(_rubberBand, y);
+        _rubberBand.Width = Math.Abs(end.X - start.X);
+        _rubberBand.Height = Math.Abs(end.Y - start.Y);
+        _rubberBand.Visibility = Visibility.Visible;
+    }
+
+    // ================= ピッキング実行(spec 6.17) =================
+
+    /// <summary>
+    /// クリック選択。additive=false は置換(空クリックで全解除)、
+    /// additive=true(Ctrl)はヒット要素をトグルする。
+    /// </summary>
+    private void SelectAtPoint(Point positionDip, bool additive)
+    {
+        if (!TryGetPickContext(out var viewProj, out var dpiScale))
+        {
+            return;
+        }
+
+        var px = (int)(positionDip.X * dpiScale);
+        var py = (int)(positionDip.Y * dpiScale);
+        var hit = _renderer!.PickPixel(_visibleGpus, in viewProj, px, py);
+
+        Selection.BeginUpdate();
+        try
+        {
+            if (!additive)
+            {
+                Selection.Clear();
+            }
+
+            if (hit is not { } h || h.MeshIndex >= _visibleSources.Count)
+            {
+                return;
+            }
+
+            var mesh = _visibleSources[h.MeshIndex];
+            switch (PickMode)
+            {
+                case ViewportPickMode.Part:
+                    if (additive)
+                    {
+                        Selection.TogglePart(mesh);
+                    }
+                    else
+                    {
+                        Selection.AddPart(mesh);
+                    }
+
+                    break;
+
+                case ViewportPickMode.Face:
+                    if (additive)
+                    {
+                        Selection.ToggleFace(mesh, h.TriangleIndex);
+                    }
+                    else
+                    {
+                        Selection.AddFace(mesh, h.TriangleIndex);
+                    }
+
+                    break;
+
+                case ViewportPickMode.Node:
+                    var cursor = new Vector2(px, py);
+                    var node = ViewportPicking.FindNearestNodeOnTriangle(
+                        mesh, h.TriangleIndex, _originX, _originY, _originZ,
+                        in viewProj, _renderer.Width, _renderer.Height, cursor);
+                    if (node is { } n)
+                    {
+                        if (additive)
+                        {
+                            Selection.ToggleNode(mesh, n);
+                        }
+                        else
+                        {
+                            Selection.AddNode(mesh, n);
+                        }
+                    }
+
+                    break;
+            }
+        }
+        finally
+        {
+            Selection.EndUpdate();
+        }
+    }
+
+    /// <summary>矩形(ラバーバンド)選択。見えているものだけが対象(spec 6.17.4)。additive=true(Ctrl)は追加。</summary>
+    private void SelectInRectangle(Point startDip, Point endDip, bool additive)
+    {
+        if (!TryGetPickContext(out var viewProj, out var dpiScale))
+        {
+            return;
+        }
+
+        var x0 = (int)(Math.Min(startDip.X, endDip.X) * dpiScale);
+        var y0 = (int)(Math.Min(startDip.Y, endDip.Y) * dpiScale);
+        var x1 = (int)Math.Ceiling(Math.Max(startDip.X, endDip.X) * dpiScale);
+        var y1 = (int)Math.Ceiling(Math.Max(startDip.Y, endDip.Y) * dpiScale);
+
+        var region = _renderer!.PickRegion(_visibleGpus, in viewProj, x0, y0, x1 - x0, y1 - y0);
+
+        Selection.BeginUpdate();
+        try
+        {
+            if (!additive)
+            {
+                Selection.Clear();
+            }
+
+            foreach (var (meshIndex, triangles) in region)
+            {
+                if (meshIndex >= _visibleSources.Count)
+                {
+                    continue;
+                }
+
+                var mesh = _visibleSources[meshIndex];
+                switch (PickMode)
+                {
+                    case ViewportPickMode.Part:
+                        Selection.AddPart(mesh);
+                        break;
+
+                    case ViewportPickMode.Face:
+                        Selection.AddFaces(mesh, triangles);
+                        break;
+
+                    case ViewportPickMode.Node:
+                        var nodes = ViewportPicking.FindNodesInRectangle(
+                            mesh, triangles, _originX, _originY, _originZ,
+                            in viewProj, _renderer.Width, _renderer.Height,
+                            new Vector2(x0, y0), new Vector2(x1, y1));
+                        Selection.AddNodes(mesh, nodes);
+                        break;
+                }
+            }
+        }
+        finally
+        {
+            Selection.EndUpdate();
+        }
+    }
+
+    /// <summary>
+    /// ピック実行に必要な状態(レンダラー・可視リスト・ビュー射影行列)を用意する。
+    /// 描画と同じ行列を使うため、ヒット判定は画面と完全に一致する。
+    /// </summary>
+    private bool TryGetPickContext(out Matrix4x4 viewProj, out double dpiScale)
+    {
+        viewProj = default;
+        dpiScale = 1.0;
+
+        if (_renderer is null || _renderBroken || _renderer.Width <= 0 || _renderer.Height <= 0)
+        {
+            return false;
+        }
+
+        EnsureGeometry();
+        BuildRenderLists();
+        if (_visibleGpus.Count == 0)
+        {
+            return false;
+        }
+
+        var dpi = VisualTreeHelper.GetDpi(this);
+        dpiScale = dpi.DpiScaleX;
+        var aspect = (double)_renderer.Width / _renderer.Height;
+        viewProj = Camera.GetViewMatrix() * Camera.GetProjectionMatrix(aspect);
+        return true;
     }
 
     protected override void OnMouseWheel(MouseWheelEventArgs e)
@@ -734,6 +1223,18 @@ public class WcuViewport : Control
             _triadCanvas.Children.Add(_triadLines[i]);
             _triadCanvas.Children.Add(_triadLabels[i]);
         }
+
+        // 矩形選択のラバーバンド(spec 6.17.4)。アクセント色トークンに追従
+        _rubberBand = new Rectangle
+        {
+            StrokeThickness = 1.0,
+            StrokeDashArray = [3.0, 2.0],
+            Visibility = Visibility.Collapsed,
+            Opacity = 0.9,
+        };
+        _rubberBand.SetResourceReference(Shape.StrokeProperty, "Wcu.Brush.Accent.Default");
+        _rubberBand.SetResourceReference(Shape.FillProperty, "Wcu.Brush.State.Selected");
+        _triadCanvas.Children.Add(_rubberBand);
     }
 
     private void UpdateTriadOverlay()
@@ -743,8 +1244,14 @@ public class WcuViewport : Control
             return;
         }
 
+        // キャンバスはラバーバンドと共用のため、トライアッド要素だけ表示を切り替える
         var visible = ShowAxisTriad && ActualWidth > TriadMargin * 2 && ActualHeight > TriadMargin * 2;
-        _triadCanvas.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        for (var i = 0; i < 3; i++)
+        {
+            _triadLines[i].Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            _triadLabels[i].Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        }
+
         if (!visible)
         {
             return;
@@ -788,9 +1295,19 @@ public class WcuViewport : Control
             gpu.Dispose();
         }
 
+        foreach (var gpu in _selectionGpu.Values)
+        {
+            gpu.Dispose();
+        }
+
         _gpuMeshes.Clear();
+        _selectionGpu.Clear();
+        _renderItems.Clear();
+        _visibleGpus.Clear();
+        _visibleSources.Clear();
         _geometryDirty = true;
         _colorMapDirty = true;
+        _selectionDirty = true;
         _lastBackBuffer = 0;
         _d3dImage = null;
         _softwareBitmap = null;
