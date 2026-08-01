@@ -25,7 +25,7 @@ internal readonly record struct ContourSettings(
     Vector4 BelowColor,
     Vector4 AboveColor);
 
-/// <summary>HLSL の cbuffer FrameConstants と 1:1 対応(192 バイト、16 バイト境界)。</summary>
+/// <summary>HLSL の cbuffer FrameConstants と 1:1 対応(208 バイト、16 バイト境界)。</summary>
 [StructLayout(LayoutKind.Sequential)]
 internal struct FrameConstants
 {
@@ -38,6 +38,7 @@ internal struct FrameConstants
     public Vector4 AboveColor;
     public Vector4 ViewportInfo; // xy=ピクセルサイズ, z=ポイント直径(px)
     public Vector4 DeformParams; // x=変形スケール(振動アニメ係数込み)
+    public Vector4 ClipPlane;    // xyz=正規化法線, w=定数項。無効時 (0,0,0,1)
 }
 
 /// <summary>描画 1 パーツ分の入力(メッシュ+選択ハイライト情報)。</summary>
@@ -60,6 +61,9 @@ internal readonly record struct RenderItem(
 internal sealed unsafe class ViewportRenderer : IDisposable
 {
     private const int ColorMapWidth = 256;
+
+    /// <summary>断面インジケータの頂点 float 数(14 頂点 × 6 float、spec 6.19.4)。</summary>
+    private const int SectionIndicatorFloatCount = 14 * 6;
 
     private readonly D3D11 _d3d11;
     private readonly D3DCompiler _compiler;
@@ -84,6 +88,7 @@ internal sealed unsafe class ViewportRenderer : IDisposable
     private ComPtr<ID3D11InputLayout> _pickLayout;
     private ComPtr<ID3D11InputLayout> _pointLayout;
     private ComPtr<ID3D11Buffer> _constantBuffer;
+    private ComPtr<ID3D11Buffer> _sectionIndicatorBuffer;
     private ComPtr<ID3D11RasterizerState> _rasterizerState;
     private ComPtr<ID3D11DepthStencilState> _depthState;
     private ComPtr<ID3D11DepthStencilState> _highlightDepthState;
@@ -272,7 +277,11 @@ internal sealed unsafe class ViewportRenderer : IDisposable
         float nodePointSizePixels,
         float deformationScale,
         bool showUndeformedWireframe,
-        Vector4 undeformedColor)
+        Vector4 undeformedColor,
+        Vector4 clipPlane,
+        float[]? sectionIndicatorVertices,
+        Vector4 sectionFillColor,
+        Vector4 sectionLineColor)
     {
         if (_msaaRtv.Handle is null)
         {
@@ -312,6 +321,7 @@ internal sealed unsafe class ViewportRenderer : IDisposable
             AboveColor = contour.AboveColor,
             ViewportInfo = new Vector4(Width, Height, nodePointSizePixels, 0.0f),
             DeformParams = new Vector4(deformationScale, 0.0f, 0.0f, 0.0f),
+            ClipPlane = ViewportSection.DisabledClip,
         };
 
         // パス 1: 不透明メッシュ → 半透明メッシュの順に三角形を描画
@@ -329,6 +339,7 @@ internal sealed unsafe class ViewportRenderer : IDisposable
 
                 constants.ObjectColor = mesh.Color;
                 constants.ScalarParams.Z = contoursEnabled && mesh.HasScalars && _colorMapSrv.Handle is not null ? 1.0f : 0.0f;
+                constants.ClipPlane = mesh.IsClippable ? clipPlane : ViewportSection.DisabledClip;
                 UploadConstants(in constants);
 
                 BindVertexBuffer(ctx, mesh);
@@ -353,6 +364,7 @@ internal sealed unsafe class ViewportRenderer : IDisposable
 
             constants.ObjectColor = edgeColor;
             constants.ScalarParams.Z = 0.0f;
+            constants.ClipPlane = mesh.IsClippable ? clipPlane : ViewportSection.DisabledClip;
             UploadConstants(in constants);
 
             BindVertexBuffer(ctx, mesh);
@@ -382,6 +394,9 @@ internal sealed unsafe class ViewportRenderer : IDisposable
 
                 constants.ObjectColor = undeformedColor;
                 constants.ScalarParams.Z = 0.0f;
+                // 非変形形状にも同じ平面でクリップを適用する(DeformParams.x=0 なので
+                // シェーダ内の符号付き距離も非変形位置で評価される)
+                constants.ClipPlane = mesh.IsClippable ? clipPlane : ViewportSection.DisabledClip;
                 UploadConstants(in constants);
 
                 BindVertexBuffer(ctx, mesh);
@@ -423,6 +438,7 @@ internal sealed unsafe class ViewportRenderer : IDisposable
 
             constants.ObjectColor = highlightColor;
             constants.ScalarParams.Z = 0.0f;
+            constants.ClipPlane = item.Mesh.IsClippable ? clipPlane : ViewportSection.DisabledClip;
             UploadConstants(in constants);
 
             BindVertexBuffer(ctx, item.Mesh);
@@ -443,6 +459,7 @@ internal sealed unsafe class ViewportRenderer : IDisposable
             }
 
             constants.ObjectColor = nodeColor;
+            constants.ClipPlane = item.Mesh.IsClippable ? clipPlane : ViewportSection.DisabledClip;
             UploadConstants(in constants);
 
             var vb = selection.NodeVertexBufferHandle;
@@ -454,6 +471,15 @@ internal sealed unsafe class ViewportRenderer : IDisposable
             ctx->PSSetShader(_pointPs.Handle, null, 0);
             ctx->IASetPrimitiveTopology(D3DPrimitiveTopology.D3D11PrimitiveTopologyTrianglelist);
             ctx->Draw(selection.NodeVertexCount, 0);
+        }
+
+        // パス 5: 断面平面インジケータ(spec 6.19.4)。半透明クワッド+輪郭線。
+        // 深度テストあり・書き込みなしで、モデルに刺さった位置関係が分かるようにする
+        if (sectionIndicatorVertices is { Length: >= SectionIndicatorFloatCount })
+        {
+            ctx->OMSetBlendState(_alphaBlendState.Handle, null, 0xFFFFFFFF);
+            ctx->OMSetDepthStencilState(_highlightDepthState.Handle, 0);
+            RenderSectionIndicator(ctx, sectionIndicatorVertices, sectionFillColor, sectionLineColor, ref constants);
         }
 
         ctx->OMSetBlendState(null, null, 0xFFFFFFFF);
@@ -482,9 +508,10 @@ internal sealed unsafe class ViewportRenderer : IDisposable
     /// メッシュインデックスは渡した <paramref name="meshes"/> リスト内の位置。
     /// </summary>
     public (int MeshIndex, int TriangleIndex)? PickPixel(
-        IReadOnlyList<GpuMesh> meshes, in Matrix4x4 viewProj, int x, int y, float deformationScale)
+        IReadOnlyList<GpuMesh> meshes, in Matrix4x4 viewProj, int x, int y, float deformationScale,
+        Vector4 clipPlane)
     {
-        var region = PickRegion(meshes, in viewProj, x, y, 1, 1, deformationScale);
+        var region = PickRegion(meshes, in viewProj, x, y, 1, 1, deformationScale, clipPlane);
         foreach (var (meshIndex, triangles) in region)
         {
             foreach (var triangle in triangles)
@@ -502,7 +529,7 @@ internal sealed unsafe class ViewportRenderer : IDisposable
     /// </summary>
     public Dictionary<int, HashSet<int>> PickRegion(
         IReadOnlyList<GpuMesh> meshes, in Matrix4x4 viewProj, int x, int y, int width, int height,
-        float deformationScale)
+        float deformationScale, Vector4 clipPlane)
     {
         var result = new Dictionary<int, HashSet<int>>();
 
@@ -516,7 +543,7 @@ internal sealed unsafe class ViewportRenderer : IDisposable
             return result;
         }
 
-        RenderIdPass(meshes, in viewProj, deformationScale);
+        RenderIdPass(meshes, in viewProj, deformationScale, clipPlane);
 
         var regionWidth = x1 - x0;
         var regionHeight = y1 - y0;
@@ -591,7 +618,8 @@ internal sealed unsafe class ViewportRenderer : IDisposable
     }
 
     /// <summary>ID パスを描画する(R=パーツID+1 / G=三角形インデックス、非 MSAA、専用深度)。</summary>
-    private void RenderIdPass(IReadOnlyList<GpuMesh> meshes, in Matrix4x4 viewProj, float deformationScale)
+    private void RenderIdPass(
+        IReadOnlyList<GpuMesh> meshes, in Matrix4x4 viewProj, float deformationScale, Vector4 clipPlane)
     {
         EnsurePickTargets();
 
@@ -619,12 +647,15 @@ internal sealed unsafe class ViewportRenderer : IDisposable
         {
             ViewProj = viewProj,
             DeformParams = new Vector4(deformationScale, 0.0f, 0.0f, 0.0f),
+            ClipPlane = ViewportSection.DisabledClip,
         };
 
         for (var i = 0; i < meshes.Count; i++)
         {
             var mesh = meshes[i];
             constants.ObjectColor = new Vector4(i + 1, 0.0f, 0.0f, 0.0f);
+            // 表示と同じクリップを適用 → 断面で隠れた要素はピックにも掛からない(spec 6.19.2)
+            constants.ClipPlane = mesh.IsClippable ? clipPlane : ViewportSection.DisabledClip;
             UploadConstants(in constants);
 
             BindVertexBuffer(ctx, mesh);
@@ -1094,6 +1125,62 @@ internal sealed unsafe class ViewportRenderer : IDisposable
         ctx->IASetVertexBuffers(0, 2, buffers, strides, offsets);
     }
 
+    /// <summary>
+    /// 断面平面インジケータを描く。頂点は position+displacement(ゼロ) の 24B インターリーブで、
+    /// 同じバッファを slot 0(offset 0)と slot 1(offset 12)にストライド 24 で二重バインドして
+    /// ライン系シェーダの 2 スロットレイアウトを満たす(専用シェーダ不要)。
+    /// 先頭 6 頂点がクワッド(三角形リスト)、続く 8 頂点が輪郭(ラインリスト)。
+    /// </summary>
+    private void RenderSectionIndicator(
+        ID3D11DeviceContext* ctx, float[] vertices, Vector4 fillColor, Vector4 lineColor,
+        ref FrameConstants constants)
+    {
+        if (_sectionIndicatorBuffer.Handle is null)
+        {
+            var desc = new BufferDesc
+            {
+                ByteWidth = SectionIndicatorFloatCount * sizeof(float),
+                Usage = Usage.Dynamic,
+                BindFlags = (uint)BindFlag.VertexBuffer,
+                CPUAccessFlags = (uint)CpuAccessFlag.Write,
+            };
+            SilkMarshal.ThrowHResult(_device.Handle->CreateBuffer(&desc, null, _sectionIndicatorBuffer.GetAddressOf()));
+        }
+
+        var mapped = default(MappedSubresource);
+        SilkMarshal.ThrowHResult(ctx->Map(
+            (ID3D11Resource*)_sectionIndicatorBuffer.Handle, 0, Map.WriteDiscard, 0, &mapped));
+        fixed (float* pVertices = vertices)
+        {
+            Buffer.MemoryCopy(pVertices, mapped.PData,
+                SectionIndicatorFloatCount * sizeof(float), SectionIndicatorFloatCount * sizeof(float));
+        }
+
+        ctx->Unmap((ID3D11Resource*)_sectionIndicatorBuffer.Handle, 0);
+
+        var buffers = stackalloc ID3D11Buffer*[2] { _sectionIndicatorBuffer.Handle, _sectionIndicatorBuffer.Handle };
+        var strides = stackalloc uint[2] { 24, 24 };
+        var offsets = stackalloc uint[2] { 0, 12 };
+        ctx->IASetVertexBuffers(0, 2, buffers, strides, offsets);
+        ctx->IASetInputLayout(_lineLayout.Handle);
+        ctx->VSSetShader(_lineVs.Handle, null, 0);
+        ctx->PSSetShader(_linePs.Handle, null, 0);
+
+        constants.ScalarParams.Z = 0.0f;
+        constants.DeformParams.X = 0.0f;
+        constants.ClipPlane = ViewportSection.DisabledClip;
+
+        constants.ObjectColor = fillColor;
+        UploadConstants(in constants);
+        ctx->IASetPrimitiveTopology(D3DPrimitiveTopology.D3D11PrimitiveTopologyTrianglelist);
+        ctx->Draw(6, 0);
+
+        constants.ObjectColor = lineColor;
+        UploadConstants(in constants);
+        ctx->IASetPrimitiveTopology(D3DPrimitiveTopology.D3D11PrimitiveTopologyLinelist);
+        ctx->Draw(8, 6);
+    }
+
     // ================= 解放 =================
 
     private void ReleaseSizedResources()
@@ -1159,6 +1246,7 @@ internal sealed unsafe class ViewportRenderer : IDisposable
         _highlightDepthState.Dispose();
         _depthState.Dispose();
         _rasterizerState.Dispose();
+        _sectionIndicatorBuffer.Dispose();
         _constantBuffer.Dispose();
         _pointLayout.Dispose();
         _pickLayout.Dispose();

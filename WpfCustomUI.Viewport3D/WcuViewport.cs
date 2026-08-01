@@ -113,6 +113,16 @@ public class WcuViewport : Control
             nameof(ShowUndeformedWireframe), typeof(bool), typeof(WcuViewport),
             new PropertyMetadata(false, OnVisualOptionChanged));
 
+    public static readonly DependencyProperty SectionPlaneProperty =
+        DependencyProperty.Register(
+            nameof(SectionPlane), typeof(SectionPlane), typeof(WcuViewport),
+            new PropertyMetadata(null, OnSectionPlaneChanged));
+
+    public static readonly DependencyProperty ShowSectionPlaneIndicatorProperty =
+        DependencyProperty.Register(
+            nameof(ShowSectionPlaneIndicator), typeof(bool), typeof(WcuViewport),
+            new PropertyMetadata(true, OnVisualOptionChanged));
+
     private readonly List<(ViewportMesh Source, GpuMesh Gpu)> _gpuMeshes = [];
     private readonly HashSet<ViewportMesh> _displacementDirtyMeshes = [];
     private readonly List<RenderItem> _renderItems = [];
@@ -286,6 +296,29 @@ public class WcuViewport : Control
     {
         get => (bool)GetValue(ShowUndeformedWireframeProperty);
         set => SetValue(ShowUndeformedWireframeProperty, value);
+    }
+
+    /// <summary>
+    /// 断面カットのクリッピング平面(spec 6.19)。null(既定)でカット無効。
+    /// 平面の法線側が表示されて残り、切り口は開放(中空に見える)。
+    /// <see cref="ViewportMesh.IsClippable"/> = false のメッシュはカットされないため、
+    /// アプリが計算した断面スライスをそこに重ねられる。
+    /// プロパティ変更(オフセットのドラッグ等)には自動追従する。
+    /// </summary>
+    public SectionPlane? SectionPlane
+    {
+        get => (SectionPlane?)GetValue(SectionPlaneProperty);
+        set => SetValue(SectionPlaneProperty, value);
+    }
+
+    /// <summary>
+    /// 断面平面のインジケータ(半透明クワッド+輪郭線)を表示する(spec 6.19.4)。
+    /// <see cref="SectionPlane"/> が null のときは何も描かれない。既定 true。
+    /// </summary>
+    public bool ShowSectionPlaneIndicator
+    {
+        get => (bool)GetValue(ShowSectionPlaneIndicatorProperty);
+        set => SetValue(ShowSectionPlaneIndicatorProperty, value);
     }
 
     /// <summary>カメラ。アプリから直接操作(視点の保存/復元など)できる。</summary>
@@ -561,15 +594,27 @@ public class WcuViewport : Control
             // ピック(PickPixel 等)が直前の描画と同じ変形量を使えるよう保存する
             _lastEffectiveDeformationScale = GetEffectiveDeformationScale();
 
+            // 断面カット(spec 6.19): クリップ係数とインジケータ頂点を組み立てる
+            var clipPlane = GetCurrentClipPlane();
+            float[]? sectionIndicator = null;
+            if (ShowSectionPlaneIndicator && clipPlane != ViewportSection.DisabledClip)
+            {
+                sectionIndicator = ViewportSection.BuildIndicatorVertices(
+                    clipPlane, (float)_localBounds.Radius);
+            }
+
+            var sectionFill = ToVector4(accent, 0.10);
+            var sectionLine = ToVector4(accent, 0.70);
+
             if (_renderer.CanUseD3DImage)
             {
                 PresentViaD3DImage(sizeChanged, viewProj, contour, background, edgeColor,
-                    highlightColor, nodeColor, pointSize);
+                    highlightColor, nodeColor, pointSize, clipPlane, sectionIndicator, sectionFill, sectionLine);
             }
             else
             {
                 PresentViaWriteableBitmap(sizeChanged, viewProj, contour, background, edgeColor,
-                    highlightColor, nodeColor, pointSize);
+                    highlightColor, nodeColor, pointSize, clipPlane, sectionIndicator, sectionFill, sectionLine);
             }
 
             UpdateTriadOverlay();
@@ -594,7 +639,8 @@ public class WcuViewport : Control
 
     private void PresentViaD3DImage(
         bool sizeChanged, Matrix4x4 viewProj, ContourSettings contour, Color background, Color edgeColor,
-        Vector4 highlightColor, Vector4 nodeColor, float pointSize)
+        Vector4 highlightColor, Vector4 nodeColor, float pointSize,
+        Vector4 clipPlane, float[]? sectionIndicator, Vector4 sectionFill, Vector4 sectionLine)
     {
         if (_d3dImage is null)
         {
@@ -623,7 +669,8 @@ public class WcuViewport : Control
                 _renderItems, in viewProj, Camera.GetEyeDirection(),
                 ToVector4(background, 1.0), in contour, ShowContours, ToVector4(edgeColor, 1.0),
                 highlightColor, nodeColor, pointSize,
-                _lastEffectiveDeformationScale, ShowUndeformedWireframe, ToVector4(edgeColor, 0.35));
+                _lastEffectiveDeformationScale, ShowUndeformedWireframe, ToVector4(edgeColor, 0.35),
+                clipPlane, sectionIndicator, sectionFill, sectionLine);
 
             _d3dImage.AddDirtyRect(new Int32Rect(0, 0, _renderer.Width, _renderer.Height));
         }
@@ -635,13 +682,15 @@ public class WcuViewport : Control
 
     private void PresentViaWriteableBitmap(
         bool sizeChanged, Matrix4x4 viewProj, ContourSettings contour, Color background, Color edgeColor,
-        Vector4 highlightColor, Vector4 nodeColor, float pointSize)
+        Vector4 highlightColor, Vector4 nodeColor, float pointSize,
+        Vector4 clipPlane, float[]? sectionIndicator, Vector4 sectionFill, Vector4 sectionLine)
     {
         _renderer!.Render(
             _renderItems, in viewProj, Camera.GetEyeDirection(),
             ToVector4(background, 1.0), in contour, ShowContours, ToVector4(edgeColor, 1.0),
             highlightColor, nodeColor, pointSize,
-            _lastEffectiveDeformationScale, ShowUndeformedWireframe, ToVector4(edgeColor, 0.35));
+            _lastEffectiveDeformationScale, ShowUndeformedWireframe, ToVector4(edgeColor, 0.35),
+            clipPlane, sectionIndicator, sectionFill, sectionLine);
 
         if (_softwareBitmap is null || sizeChanged)
         {
@@ -799,6 +848,7 @@ public class WcuViewport : Control
 
             gpu.Color = ToVector4(source.Color, source.Opacity);
             gpu.ShowEdges = ShowEdges && source.ShowEdges;
+            gpu.IsClippable = source.IsClippable;
 
             _selectionGpu.TryGetValue(source, out var selection);
             _renderItems.Add(new RenderItem(gpu, selection, Selection.IsPartSelected(source)));
@@ -980,6 +1030,34 @@ public class WcuViewport : Control
 
     private static void OnVisualOptionChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
         ((WcuViewport)d).InvalidateViewport();
+
+    private static void OnSectionPlaneChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var viewport = (WcuViewport)d;
+
+        if (e.OldValue is SectionPlane oldPlane)
+        {
+            oldPlane.PropertyChanged -= viewport.OnSectionPlanePropertyChanged;
+        }
+
+        if (e.NewValue is SectionPlane newPlane)
+        {
+            newPlane.PropertyChanged += viewport.OnSectionPlanePropertyChanged;
+        }
+
+        viewport.InvalidateViewport();
+    }
+
+    private void OnSectionPlanePropertyChanged(object? sender, PropertyChangedEventArgs e) =>
+        InvalidateViewport();
+
+    /// <summary>
+    /// 現在の断面クリップ係数(シェーダ用)を求める。カット無効時は
+    /// <see cref="ViewportSection.DisabledClip"/>(常に全表示)を返す。
+    /// </summary>
+    private Vector4 GetCurrentClipPlane() =>
+        ViewportSection.ComputeClipCoefficients(SectionPlane, _originX, _originY, _originZ)
+        ?? ViewportSection.DisabledClip;
 
     private static void OnPickModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -1184,7 +1262,8 @@ public class WcuViewport : Control
 
         var px = (int)(positionDip.X * dpiScale);
         var py = (int)(positionDip.Y * dpiScale);
-        var hit = _renderer!.PickPixel(_visibleGpus, in viewProj, px, py, _lastEffectiveDeformationScale);
+        var hit = _renderer!.PickPixel(
+            _visibleGpus, in viewProj, px, py, _lastEffectiveDeformationScale, GetCurrentClipPlane());
 
         Selection.BeginUpdate();
         try
@@ -1267,7 +1346,8 @@ public class WcuViewport : Control
         var y1 = (int)Math.Ceiling(Math.Max(startDip.Y, endDip.Y) * dpiScale);
 
         var region = _renderer!.PickRegion(
-            _visibleGpus, in viewProj, x0, y0, x1 - x0, y1 - y0, _lastEffectiveDeformationScale);
+            _visibleGpus, in viewProj, x0, y0, x1 - x0, y1 - y0, _lastEffectiveDeformationScale,
+            GetCurrentClipPlane());
 
         Selection.BeginUpdate();
         try

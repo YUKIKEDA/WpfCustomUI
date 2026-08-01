@@ -22,6 +22,7 @@ internal static class HlslSource
             float4 AboveColor;
             float4 ViewportInfo;   // xy=ビューポートのピクセルサイズ, z=ポイント直径(px)
             float4 DeformParams;   // x=変形スケール(振動アニメ係数込み)
+            float4 ClipPlane;      // xyz=正規化法線(ローカル座標), w=定数項。無効時 (0,0,0,1)
         };
         """;
 
@@ -44,6 +45,7 @@ internal static class HlslSource
             float4 pos    : SV_Position;
             float3 normal : NORMAL;
             float  scalar : TEXCOORD0;
+            float  clip   : SV_ClipDistance0;
         };
 
         PSIn VSMain(VSIn v)
@@ -55,6 +57,8 @@ internal static class HlslSource
             o.pos = mul(float4(pos, 1.0), ViewProj);
             o.normal = v.normal;
             o.scalar = v.scalar;
+            // 断面カット(spec 6.19.2): 変形後の位置で符号付き距離を評価し、負側をクリップ
+            o.clip = dot(pos, ClipPlane.xyz) + ClipPlane.w;
             return o;
         }
 
@@ -118,7 +122,8 @@ internal static class HlslSource
 
         struct PSIn
         {
-            float4 pos : SV_Position;
+            float4 pos  : SV_Position;
+            float  clip : SV_ClipDistance0;
         };
 
         PSIn VSMain(VSIn v)
@@ -127,6 +132,7 @@ internal static class HlslSource
             float3 pos = v.pos + v.disp * DeformParams.x;
             o.pos = mul(float4(pos, 1.0), ViewProj);
             o.pos.z -= 0.0005 * o.pos.w;
+            o.clip = dot(pos, ClipPlane.xyz) + ClipPlane.w;
             return o;
         }
 
@@ -150,15 +156,18 @@ internal static class HlslSource
 
         struct PSIn
         {
-            float4 pos : SV_Position;
+            float4 pos  : SV_Position;
+            float  clip : SV_ClipDistance0;
         };
 
         PSIn VSMain(VSIn v)
         {
             PSIn o;
-            // 表示と同じ変形を適用し、変形後の見た目どおりにピックできるようにする
+            // 表示と同じ変形+クリップを適用し、見た目どおりにピックできるようにする
+            // (クリップで隠れた部分はピックにも掛からない、spec 6.19.2)
             float3 pos = v.pos + v.disp * DeformParams.x;
             o.pos = mul(float4(pos, 1.0), ViewProj);
+            o.clip = dot(pos, ClipPlane.xyz) + ClipPlane.w;
             return o;
         }
 
@@ -185,12 +194,14 @@ internal static class HlslSource
         {
             float4 pos    : SV_Position;
             float2 corner : TEXCOORD0;
+            float  clipDistance : SV_ClipDistance0;
         };
 
         PSIn VSMain(VSIn v)
         {
             PSIn o;
             float3 pos = v.pos + v.disp * DeformParams.x;
+            o.clipDistance = dot(pos, ClipPlane.xyz) + ClipPlane.w;
             float4 clip = mul(float4(pos, 1.0), ViewProj);
             clip.z -= 0.001 * clip.w; // 面の上に確実に見えるよう手前へ
             clip.xy += v.corner * ViewportInfo.z * (2.0 / ViewportInfo.xy) * clip.w;

@@ -37,6 +37,9 @@ internal sealed unsafe class GpuMesh : IDisposable
 
     public bool ShowEdges { get; set; }
 
+    /// <summary>断面カットの対象か(<see cref="ViewportMesh.IsClippable"/> を毎フレーム同期)。</summary>
+    public bool IsClippable { get; set; } = true;
+
     public bool IsTransparent => Color.W < 0.999f;
 
     public ID3D11Buffer* VertexBufferHandle => _vertexBuffer.Handle;

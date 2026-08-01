@@ -26,6 +26,7 @@ public sealed class ViewportMesh : INotifyPropertyChanged
     private Color _color = Color.FromRgb(0xB0, 0xB4, 0xBC);
     private bool _isVisible = true;
     private bool _showEdges = true;
+    private bool _isClippable = true;
     private double _opacity = 1.0;
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -92,6 +93,17 @@ public sealed class ViewportMesh : INotifyPropertyChanged
     {
         get => _showEdges;
         set => SetField(ref _showEdges, value);
+    }
+
+    /// <summary>
+    /// 断面カット(<see cref="WcuViewport.SectionPlane"/>)の対象にするか(spec 6.19.3)。
+    /// false にすると常に全体が表示される。アプリが計算して追加する断面スライスや
+    /// 治具・参照パーツをクリップから除外する用途。既定 true。
+    /// </summary>
+    public bool IsClippable
+    {
+        get => _isClippable;
+        set => SetField(ref _isClippable, value);
     }
 
     /// <summary>不透明度(0〜1)。1 未満で半透明描画(簡易・ソートなし)。</summary>
