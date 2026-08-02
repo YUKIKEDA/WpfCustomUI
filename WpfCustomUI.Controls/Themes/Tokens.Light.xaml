@@ -45,6 +45,11 @@
     <Color x:Key="Wcu.Color.Success">#107C10</Color>
     <Color x:Key="Wcu.Color.Info">#005FB8</Color>
 
+    <!-- Danger(破壊的操作ボタンの面。ライトはホバーで暗くする) -->
+    <Color x:Key="Wcu.Color.Danger.Default">#C42B1C</Color>
+    <Color x:Key="Wcu.Color.Danger.Hover">#A4262C</Color>
+    <Color x:Key="Wcu.Color.Danger.Pressed">#8B1F17</Color>
+
     <!--
         アクセントの現在値(ThemeManager.SetAccent で実行時に上書きされ得る色キー)。
         Muted はダークと違い淡色(選択背景などに濃色テキストが載る前提)。
@@ -98,5 +103,10 @@
     <SolidColorBrush x:Key="Wcu.Brush.Warning" Color="{StaticResource Wcu.Color.Warning}" />
     <SolidColorBrush x:Key="Wcu.Brush.Success" Color="{StaticResource Wcu.Color.Success}" />
     <SolidColorBrush x:Key="Wcu.Brush.Info" Color="{StaticResource Wcu.Color.Info}" />
+
+    <!-- Danger -->
+    <SolidColorBrush x:Key="Wcu.Brush.Danger.Default" Color="{StaticResource Wcu.Color.Danger.Default}" />
+    <SolidColorBrush x:Key="Wcu.Brush.Danger.Hover" Color="{StaticResource Wcu.Color.Danger.Hover}" />
+    <SolidColorBrush x:Key="Wcu.Brush.Danger.Pressed" Color="{StaticResource Wcu.Color.Danger.Pressed}" />
 
 </ResourceDictionary>

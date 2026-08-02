@@ -6,7 +6,8 @@
               xmlns:behaviors="clr-namespace:CaeStudio.App.Behaviors"
               xmlns:ad="clr-namespace:AvalonDock;assembly=AvalonDock"
               xmlns:adl="clr-namespace:AvalonDock.Layout;assembly=AvalonDock"
-              Title="{Binding WindowTitle.Value, Mode=OneWay}"
+              Title="CaeStudio"
+              Icon="{StaticResource CaeStudio.AppIcon}"
               Width="1400" Height="900"
               WindowStartupLocation="CenterScreen">
 
@@ -14,51 +15,63 @@
         <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
     </ui:WcuWindow.Resources>
 
-    <!-- タイトルバー埋め込みメニュー(VS 風高密度レイアウト) -->
+    <!-- FreeCAD / VS 風: タイトルバー左=アイコン+アプリ名、その右にファイルと文書名 -->
     <ui:WcuWindow.TitleBarContent>
-        <Menu VerticalAlignment="Center" Background="Transparent">
-            <MenuItem Header="ファイル(_F)">
-                <MenuItem Header="新規解析(_N)..."
-                          Command="{Binding NewProjectCommand}"
-                          InputGestureText="Ctrl+N" />
-                <MenuItem Header="開く(_O)..."
-                          AutomationProperties.AutomationId="OpenMenuItem"
-                          Command="{Binding OpenCommand}"
-                          InputGestureText="Ctrl+O" />
-                <MenuItem Header="最近使ったファイル(_R)"
-                          ItemsSource="{Binding RecentFiles}">
-                    <MenuItem.ItemContainerStyle>
-                        <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
-                            <Setter Property="Header" Value="{Binding}" />
-                            <Setter Property="Command"
-                                    Value="{Binding DataContext.OpenRecentCommand,
-                                        RelativeSource={RelativeSource AncestorType=Menu}}" />
-                            <Setter Property="CommandParameter" Value="{Binding}" />
-                        </Style>
-                    </MenuItem.ItemContainerStyle>
-                </MenuItem>
-                <Separator />
-                <MenuItem Header="保存(_S)"
-                          AutomationProperties.AutomationId="SaveMenuItem"
-                          Command="{Binding SaveCommand}"
-                          InputGestureText="Ctrl+S" />
-                <MenuItem Header="名前を付けて保存(_A)..."
-                          AutomationProperties.AutomationId="SaveAsMenuItem"
-                          Command="{Binding SaveAsCommand}" />
-                <Separator />
-                <MenuItem Header="設定(_T)..."
-                          AutomationProperties.AutomationId="SettingsMenuItem"
-                          Command="{Binding SettingsCommand}" />
-            </MenuItem>
-            <MenuItem Header="表示(_V)">
-                <MenuItem Header="全体表示(_F)" Command="{Binding FitViewCommand}" InputGestureText="F8" />
-                <Separator />
-                <MenuItem Header="ライトテーマ(_L)"
-                          AutomationProperties.AutomationId="ThemeMenuItem"
-                          IsCheckable="True"
-                          IsChecked="{Binding IsLightTheme.Value, Mode=TwoWay}" />
-            </MenuItem>
-        </Menu>
+        <StackPanel Orientation="Horizontal" Margin="0,0,8,0">
+            <ui:DropDownButton AutomationProperties.AutomationId="AppMenuButton"
+                               Content="ファイル"
+                               Margin="4,0,0,0"
+                               VerticalAlignment="Stretch">
+                <ui:DropDownButton.Style>
+                    <Style TargetType="{x:Type ui:DropDownButton}"
+                           BasedOn="{StaticResource Wcu.Ribbon.ApplicationButton}">
+                        <Setter Property="Padding" Value="14,2" />
+                    </Style>
+                </ui:DropDownButton.Style>
+                <ui:DropDownButton.DropDownMenu>
+                    <ContextMenu>
+                        <MenuItem Header="新規解析(_N)..."
+                                  AutomationProperties.AutomationId="NewProjectMenuItem"
+                                  Command="{Binding NewProjectCommand}"
+                                  InputGestureText="Ctrl+N" />
+                        <MenuItem Header="開く(_O)..."
+                                  AutomationProperties.AutomationId="OpenMenuItem"
+                                  Command="{Binding OpenCommand}"
+                                  InputGestureText="Ctrl+O" />
+                        <MenuItem Header="最近使ったファイル(_R)"
+                                  ItemsSource="{Binding RecentFiles}">
+                            <MenuItem.ItemContainerStyle>
+                                <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                                    <Setter Property="Header" Value="{Binding}" />
+                                    <Setter Property="Command"
+                                            Value="{Binding DataContext.OpenRecentCommand,
+                                                RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                    <Setter Property="CommandParameter" Value="{Binding}" />
+                                </Style>
+                            </MenuItem.ItemContainerStyle>
+                        </MenuItem>
+                        <Separator />
+                        <MenuItem Header="保存(_S)"
+                                  AutomationProperties.AutomationId="SaveMenuItem"
+                                  Command="{Binding SaveCommand}"
+                                  InputGestureText="Ctrl+S" />
+                        <MenuItem Header="名前を付けて保存(_A)..."
+                                  AutomationProperties.AutomationId="SaveAsMenuItem"
+                                  Command="{Binding SaveAsCommand}" />
+                        <Separator />
+                        <MenuItem Header="設定(_T)..."
+                                  AutomationProperties.AutomationId="SettingsMenuItem"
+                                  Command="{Binding SettingsCommand}" />
+                    </ContextMenu>
+                </ui:DropDownButton.DropDownMenu>
+            </ui:DropDownButton>
+            <TextBlock Margin="12,0,0,0"
+                       VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis"
+                       MaxWidth="420"
+                       Foreground="{DynamicResource Wcu.Brush.Text.Secondary}"
+                       Text="{Binding DocumentTitle.Value, Mode=OneWay}" />
+        </StackPanel>
     </ui:WcuWindow.TitleBarContent>
 
     <ui:WcuWindow.InputBindings>
@@ -71,73 +84,235 @@
 
     <Grid>
         <DockPanel>
-            <!-- ツールバー -->
-            <ToolBarTray DockPanel.Dock="Top">
-                <ToolBar>
-                    <Button Content="新規解析"
-                            AutomationProperties.AutomationId="NewProjectButton"
-                            Command="{Binding NewProjectCommand}" />
-                    <Separator />
-                    <!-- 本体クリック = 現在の解析タイプで実行、▼ = タイプを選んで実行 -->
-                    <ui:SplitButton Content="解析実行"
-                                    AutomationProperties.AutomationId="RunButton"
-                                    Command="{Binding RunCommand}">
-                        <ui:SplitButton.DropDownMenu>
-                            <ContextMenu>
-                                <MenuItem Header="静解析を実行"
-                                          AutomationProperties.AutomationId="RunStaticMenuItem"
-                                          Command="{Binding RunStaticCommand}" />
-                                <MenuItem Header="固有値解析を実行"
-                                          AutomationProperties.AutomationId="RunModalMenuItem"
-                                          Command="{Binding RunModalCommand}" />
-                            </ContextMenu>
-                        </ui:SplitButton.DropDownMenu>
-                    </ui:SplitButton>
-                    <Button Content="キャンセル"
-                            AutomationProperties.AutomationId="CancelButton"
-                            Command="{Binding CancelCommand}" />
-                    <Separator />
-                    <Button Content="全体表示"
-                            AutomationProperties.AutomationId="FitButton"
-                            Command="{Binding FitViewCommand}" />
-                    <ui:DropDownButton Content="視点"
-                                       AutomationProperties.AutomationId="ViewButton">
-                        <ui:DropDownButton.DropDownMenu>
-                            <ContextMenu>
-                                <MenuItem Header="等角"
-                                          Command="{Binding SetViewCommand}" CommandParameter="Isometric" />
-                                <MenuItem Header="正面 (XY)"
-                                          Command="{Binding SetViewCommand}" CommandParameter="Front" />
-                                <MenuItem Header="上面"
-                                          Command="{Binding SetViewCommand}" CommandParameter="Top" />
-                                <MenuItem Header="右側面"
-                                          Command="{Binding SetViewCommand}" CommandParameter="Right" />
-                            </ContextMenu>
-                        </ui:DropDownButton.DropDownMenu>
-                    </ui:DropDownButton>
-                    <Separator />
-                    <ui:ToggleSwitch Content="プローブ"
-                                     AutomationProperties.AutomationId="ProbeToggle"
-                                     IsChecked="{Binding IsProbeEnabled.Value, Mode=TwoWay}" />
-                    <Button Content="注釈クリア"
-                            AutomationProperties.AutomationId="ClearAnnotationsButton"
-                            Command="{Binding ClearAnnotationsCommand}" />
-                    <Separator />
-                    <TextBlock Text="変形倍率"
-                               VerticalAlignment="Center" Margin="8,0,4,0" />
-                    <ui:NumericBox Width="90"
-                                   AutomationProperties.AutomationId="DeformationScaleBox"
-                                   Value="{Binding DeformationScale.Value, Mode=TwoWay}"
-                                   Minimum="0" Maximum="1000000" Increment="10" />
-                    <Separator />
-                    <ui:CheckComboBox Width="150"
-                                      AutomationProperties.AutomationId="DisplayOptions"
-                                      ItemsSource="{Binding DisplayOptions}"
-                                      SelectedItems="{Binding SelectedDisplayOptions}"
-                                      PlaceholderText="表示項目"
-                                      SelectAllContent="すべて" />
-                </ToolBar>
-            </ToolBarTray>
+            <!-- リボン(spec 6.27.3: ワークフロー順タブ=モデル→解析→結果→表示)。ファイルはタイトルバーへ -->
+            <ui:WcuRibbon DockPanel.Dock="Top"
+                          AutomationProperties.AutomationId="MainRibbon"
+                          SelectedIndex="{Binding RibbonTabIndex.Value, Mode=TwoWay}">
+
+                <!-- タブ列右端: テーマ切替 -->
+                <ui:WcuRibbon.AuxiliaryContent>
+                    <ToggleButton Style="{StaticResource Wcu.Ribbon.Toggle.Small}"
+                                  AutomationProperties.AutomationId="ThemeToggle"
+                                  ui:ButtonAssist.Icon="{x:Static ui:WcuIcons.Sun}"
+                                  Content="ライト"
+                                  ToolTip="ライトテーマに切り替え"
+                                  IsChecked="{Binding IsLightTheme.Value, Mode=TwoWay}" />
+                </ui:WcuRibbon.AuxiliaryContent>
+
+                <!-- ① モデル: 入力の準備 -->
+                <ui:WcuRibbonTab Header="モデル">
+                    <ui:WcuRibbonGroup Header="プロジェクト">
+                        <Button Style="{StaticResource Wcu.Ribbon.Button.Large}"
+                                AutomationProperties.AutomationId="NewProjectButton"
+                                ui:ButtonAssist.Icon="{x:Static ui:WcuIcons.NewFile}"
+                                Content="新規解析"
+                                Command="{Binding NewProjectCommand}" />
+                        <StackPanel VerticalAlignment="Center">
+                            <Button Style="{StaticResource Wcu.Ribbon.Button.Small}"
+                                    AutomationProperties.AutomationId="OpenButton"
+                                    ui:ButtonAssist.Icon="{x:Static ui:WcuIcons.FolderOpen}"
+                                    Content="開く"
+                                    Command="{Binding OpenCommand}" />
+                            <Button Style="{StaticResource Wcu.Ribbon.Button.Small}"
+                                    AutomationProperties.AutomationId="SaveButton"
+                                    ui:ButtonAssist.Icon="{x:Static ui:WcuIcons.Save}"
+                                    Content="保存"
+                                    Command="{Binding SaveCommand}" />
+                            <Button Style="{StaticResource Wcu.Ribbon.Button.Small}"
+                                    ui:ButtonAssist.Icon="{x:Static ui:WcuIcons.SaveAs}"
+                                    AutomationProperties.AutomationId="SaveAsButton"
+                                    Content="名前を付けて保存"
+                                    Command="{Binding SaveAsCommand}" />
+                        </StackPanel>
+                    </ui:WcuRibbonGroup>
+                    <ui:WcuRibbonGroup Header="入力の編集">
+                        <!-- クリックでプロパティパネルを該当カテゴリに絞り込む -->
+                        <Button Style="{StaticResource Wcu.Ribbon.Button.Large}"
+                                AutomationProperties.AutomationId="EditGeometryButton"
+                                ui:ButtonAssist.Icon="{x:Static ui:WcuIcons.Cube}"
+                                Content="形状"
+                                Command="{Binding SelectCategoryCommand}" CommandParameter="形状" />
+                        <Button Style="{StaticResource Wcu.Ribbon.Button.Large}"
+                                ui:ButtonAssist.Icon="{x:Static ui:WcuIcons.Support}"
+                                Content="荷重"
+                                Command="{Binding SelectCategoryCommand}" CommandParameter="荷重" />
+                        <Button Style="{StaticResource Wcu.Ribbon.Button.Large}"
+                                ui:ButtonAssist.Icon="{x:Static ui:WcuIcons.Layers}"
+                                Content="材料"
+                                Command="{Binding SelectCategoryCommand}" CommandParameter="材料" />
+                        <Button Style="{StaticResource Wcu.Ribbon.Button.Large}"
+                                ui:ButtonAssist.Icon="{x:Static ui:WcuIcons.Settings}"
+                                Content="ソルバ"
+                                Command="{Binding SelectCategoryCommand}" CommandParameter="ソルバ" />
+                    </ui:WcuRibbonGroup>
+                </ui:WcuRibbonTab>
+
+                <!-- ② 解析: 実行と検証 -->
+                <ui:WcuRibbonTab Header="解析">
+                    <ui:WcuRibbonGroup Header="実行">
+                        <!-- 本体クリック = 現在の解析タイプで実行、▼ = タイプを選んで実行 -->
+                        <ui:SplitButton Style="{StaticResource Wcu.Ribbon.SplitButton.Large.Accent}"
+                                        AutomationProperties.AutomationId="RunButton"
+                                        ui:ButtonAssist.Icon="{x:Static ui:WcuIcons.Play}"
+                                        Content="{Binding RunButtonLabel.Value, Mode=OneWay}"
+                                        Command="{Binding RunCommand}">
+                            <ui:SplitButton.DropDownMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="ローカルで実行"
+                                              AutomationProperties.AutomationId="RunLocalMenuItem"
+                                              Command="{Binding RunCommand}" />
+                                    <MenuItem Header="ジョブとして投入..."
+                                              AutomationProperties.AutomationId="SubmitJobMenuItem"
+                                              Command="{Binding SubmitJobCommand}" />
+                                    <Separator />
+                                    <MenuItem Header="静解析を実行"
+                                              AutomationProperties.AutomationId="RunStaticMenuItem"
+                                              Command="{Binding RunStaticCommand}" />
+                                    <MenuItem Header="固有値解析を実行"
+                                              AutomationProperties.AutomationId="RunModalMenuItem"
+                                              Command="{Binding RunModalCommand}" />
+                                </ContextMenu>
+                            </ui:SplitButton.DropDownMenu>
+                        </ui:SplitButton>
+                        <Button Style="{StaticResource Wcu.Ribbon.Button.Large}"
+                                AutomationProperties.AutomationId="CancelButton"
+                                ui:ButtonAssist.Icon="{x:Static ui:WcuIcons.Stop}"
+                                Content="中止"
+                                Command="{Binding CancelCommand}" />
+                    </ui:WcuRibbonGroup>
+                    <ui:WcuRibbonGroup Header="ジョブ">
+                        <Button Style="{StaticResource Wcu.Ribbon.Button.Large}"
+                                AutomationProperties.AutomationId="JobsPanelButton"
+                                ui:ButtonAssist.Icon="{x:Static ui:WcuIcons.Server}"
+                                Content="ジョブモニタ"
+                                Command="{Binding ShowJobsCommand}" />
+                    </ui:WcuRibbonGroup>
+                    <ui:WcuRibbonGroup Header="検証">
+                        <!-- メッシュ細分化スタディ(実行するとスタディパネルが自動表示) -->
+                        <Button Style="{StaticResource Wcu.Ribbon.Button.Large}"
+                                AutomationProperties.AutomationId="StudyRunButton"
+                                ui:ButtonAssist.Icon="{x:Static ui:WcuIcons.ChartLine}"
+                                Content="細分化スタディ"
+                                Command="{Binding StudyCommand}" />
+                    </ui:WcuRibbonGroup>
+                </ui:WcuRibbonTab>
+
+                <!-- ③ 結果: ポスト処理(結果があるまで無効=状態依存ディミング) -->
+                <ui:WcuRibbonTab Header="結果" IsEnabled="{Binding HasResult.Value, Mode=OneWay}">
+                    <ui:WcuRibbonGroup Header="計測">
+                        <ToggleButton Style="{StaticResource Wcu.Ribbon.Toggle.Large}"
+                                      AutomationProperties.AutomationId="ProbeToggle"
+                                      ui:ButtonAssist.Icon="{x:Static ui:WcuIcons.Probe}"
+                                      Content="プローブ"
+                                      IsChecked="{Binding IsProbeEnabled.Value, Mode=TwoWay}" />
+                        <Button Style="{StaticResource Wcu.Ribbon.Button.Large}"
+                                AutomationProperties.AutomationId="ClearAnnotationsButton"
+                                ui:ButtonAssist.Icon="{x:Static ui:WcuIcons.Delete}"
+                                Content="注釈クリア"
+                                Command="{Binding ClearAnnotationsCommand}" />
+                    </ui:WcuRibbonGroup>
+                    <ui:WcuRibbonGroup Header="変形表示">
+                        <StackPanel VerticalAlignment="Center" Margin="4,0">
+                            <TextBlock Text="変形倍率"
+                                       Margin="2,0,0,2"
+                                       FontSize="{DynamicResource Wcu.FontSize.S}"
+                                       Foreground="{DynamicResource Wcu.Brush.Text.Secondary}" />
+                            <ui:NumericBox Width="110"
+                                           AutomationProperties.AutomationId="DeformationScaleBox"
+                                           Value="{Binding DeformationScale.Value, Mode=TwoWay}"
+                                           Minimum="0" Maximum="1000000" Increment="10" />
+                        </StackPanel>
+                    </ui:WcuRibbonGroup>
+                </ui:WcuRibbonTab>
+
+                <!-- ④ 表示: 視点とパネル -->
+                <ui:WcuRibbonTab Header="表示">
+                    <ui:WcuRibbonGroup Header="視点">
+                        <Button Style="{StaticResource Wcu.Ribbon.Button.Large}"
+                                AutomationProperties.AutomationId="FitButton"
+                                ui:ButtonAssist.Icon="{x:Static ui:WcuIcons.ZoomToFit}"
+                                Content="全体表示"
+                                Command="{Binding FitViewCommand}" />
+                        <ui:DropDownButton AutomationProperties.AutomationId="ViewButton"
+                                           ui:ButtonAssist.Icon="{x:Static ui:WcuIcons.Camera}"
+                                           Content="視点"
+                                           VerticalAlignment="Center" Margin="4,0">
+                            <ui:DropDownButton.DropDownMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="等角"
+                                              Command="{Binding SetViewCommand}" CommandParameter="Isometric" />
+                                    <MenuItem Header="正面 (XY)"
+                                              Command="{Binding SetViewCommand}" CommandParameter="Front" />
+                                    <MenuItem Header="上面"
+                                              Command="{Binding SetViewCommand}" CommandParameter="Top" />
+                                    <MenuItem Header="右側面"
+                                              Command="{Binding SetViewCommand}" CommandParameter="Right" />
+                                </ContextMenu>
+                            </ui:DropDownButton.DropDownMenu>
+                        </ui:DropDownButton>
+                    </ui:WcuRibbonGroup>
+                    <ui:WcuRibbonGroup Header="表示項目">
+                        <ui:CheckComboBox Width="150" VerticalAlignment="Center" Margin="4,0"
+                                          AutomationProperties.AutomationId="DisplayOptions"
+                                          ItemsSource="{Binding DisplayOptions}"
+                                          SelectedItems="{Binding SelectedDisplayOptions}"
+                                          PlaceholderText="表示項目"
+                                          SelectAllContent="すべて" />
+                    </ui:WcuRibbonGroup>
+                    <ui:WcuRibbonGroup Header="パネル">
+                        <!-- 段階連動パネルの手動トグル(解析の進行でも自動表示される) -->
+                        <StackPanel VerticalAlignment="Center">
+                            <ToggleButton Style="{StaticResource Wcu.Ribbon.Toggle.Small}"
+                                          AutomationProperties.AutomationId="ConvergencePanelToggle"
+                                          ui:ButtonAssist.Icon="{x:Static ui:WcuIcons.ChartLine}"
+                                          Content="収束モニタ"
+                                          IsChecked="{Binding IsConvergenceVisible.Value, Mode=TwoWay}" />
+                            <ToggleButton Style="{StaticResource Wcu.Ribbon.Toggle.Small}"
+                                          ui:ButtonAssist.Icon="{x:Static ui:WcuIcons.Vector}"
+                                          Content="パスプロット"
+                                          IsChecked="{Binding IsPathPlotVisible.Value, Mode=TwoWay}" />
+                            <ToggleButton Style="{StaticResource Wcu.Ribbon.Toggle.Small}"
+                                          ui:ButtonAssist.Icon="{x:Static ui:WcuIcons.ChartBar}"
+                                          Content="ヒストグラム"
+                                          IsChecked="{Binding IsHistogramVisible.Value, Mode=TwoWay}" />
+                            <ToggleButton Style="{StaticResource Wcu.Ribbon.Toggle.Small}"
+                                          ui:ButtonAssist.Icon="{x:Static ui:WcuIcons.History}"
+                                          Content="スタディ"
+                                          IsChecked="{Binding IsStudyVisible.Value, Mode=TwoWay}" />
+                            <ToggleButton Style="{StaticResource Wcu.Ribbon.Toggle.Small}"
+                                          AutomationProperties.AutomationId="JobsPanelToggle"
+                                          ui:ButtonAssist.Icon="{x:Static ui:WcuIcons.Server}"
+                                          Content="ジョブモニタ"
+                                          IsChecked="{Binding IsJobsVisible.Value, Mode=TwoWay}" />
+                        </StackPanel>
+                        <StackPanel VerticalAlignment="Center">
+                            <ToggleButton Style="{StaticResource Wcu.Ribbon.Toggle.Small}"
+                                          ui:ButtonAssist.Icon="{x:Static ui:WcuIcons.ChartLine}"
+                                          Content="周波数応答"
+                                          IsChecked="{Binding IsFrfVisible.Value, Mode=TwoWay}" />
+                            <ToggleButton Style="{StaticResource Wcu.Ribbon.Toggle.Small}"
+                                          ui:ButtonAssist.Icon="{x:Static ui:WcuIcons.List}"
+                                          Content="モード"
+                                          IsChecked="{Binding IsModesVisible.Value, Mode=TwoWay}" />
+                            <ToggleButton Style="{StaticResource Wcu.Ribbon.Toggle.Small}"
+                                          ui:ButtonAssist.Icon="{x:Static ui:WcuIcons.Grid}"
+                                          Content="材料剛性"
+                                          IsChecked="{Binding IsMaterialVisible.Value, Mode=TwoWay}" />
+                            <ToggleButton Style="{StaticResource Wcu.Ribbon.Toggle.Small}"
+                                          ui:ButtonAssist.Icon="{x:Static ui:WcuIcons.Contour}"
+                                          Content="凡例"
+                                          IsChecked="{Binding IsLegendVisible.Value, Mode=TwoWay}" />
+                        </StackPanel>
+                    </ui:WcuRibbonGroup>
+                    <ui:WcuRibbonGroup Header="アプリケーション">
+                        <Button Style="{StaticResource Wcu.Ribbon.Button.Large}"
+                                AutomationProperties.AutomationId="SettingsButton"
+                                ui:ButtonAssist.Icon="{x:Static ui:WcuIcons.Settings}"
+                                Content="設定"
+                                Command="{Binding SettingsCommand}" />
+                    </ui:WcuRibbonGroup>
+                </ui:WcuRibbonTab>
+            </ui:WcuRibbon>
 
             <!-- ステータスバー -->
             <StatusBar DockPanel.Dock="Bottom">
@@ -203,6 +378,11 @@
                                                     Title="再解析が必要"
                                                     Message="入力が変更されています。［解析実行］で結果を更新してください。"
                                                     IsOpen="{Binding IsResultStale.Value, Mode=TwoWay}" />
+                                        <ui:InfoBar DockPanel.Dock="Top"
+                                                    Severity="Warning"
+                                                    Title="ジョブ投入時とモデルが異なります"
+                                                    Message="ジョブ結果は投入時点の入力スナップショットです。現行モデルとは一致しません。"
+                                                    IsOpen="{Binding IsJobSnapshotMismatch.Value, Mode=TwoWay}" />
                                         <!-- 位相スイープ再生(固有値解析の結果表示中のみ) -->
                                         <ui:PlaybackBar DockPanel.Dock="Bottom"
                                                         AutomationProperties.AutomationId="PhasePlayback"
@@ -212,27 +392,75 @@
                                                         CurrentFrame="{Binding PhaseFrame.Value, Mode=TwoWay}"
                                                         Visibility="{Binding IsModalResult.Value,
                                                             Converter={StaticResource BoolToVisibility}}" />
-                                        <!-- BusyOverlay: メッシュ再生成中の表示(入力編集→デバウンス生成の間) -->
-                                        <ui:BusyOverlay IsBusy="{Binding IsMeshBuilding.Value, Mode=OneWay}"
-                                                        BusyText="メッシュ生成中...">
-                                            <ui:WcuViewport AutomationProperties.AutomationId="Viewport"
-                                                            MeshSource="{Binding Meshes}"
-                                                            ColorScale="{Binding ResultScale}"
-                                                            DeformationScale="{Binding EffectiveDeformationScale.Value, Mode=OneWay}"
-                                                            ShowUndeformedWireframe="{Binding ShowUndeformedWireframe.Value, Mode=OneWay}"
-                                                            PickMode="{Binding PickMode.Value, Mode=OneWay}">
-                                                <b:Interaction.Behaviors>
-                                                    <behaviors:ViewportFitBehavior
-                                                        FitRequest="{Binding FitRequest.Value, Mode=OneWay}" />
-                                                    <behaviors:ViewportStandardViewBehavior
-                                                        Request="{Binding ViewRequest.Value, Mode=OneWay}" />
-                                                    <behaviors:ViewportProbeBehavior
-                                                        ProbeCommand="{Binding ProbeCommand}"
-                                                        LabelFormatter="{Binding ProbeLabelFormatter}"
-                                                        ClearRequest="{Binding AnnotationClearRequest.Value, Mode=OneWay}" />
-                                                </b:Interaction.Behaviors>
-                                            </ui:WcuViewport>
-                                        </ui:BusyOverlay>
+                                        <Grid>
+                                            <!-- BusyOverlay: メッシュ再生成中の表示(入力編集→デバウンス生成の間) -->
+                                            <ui:BusyOverlay IsBusy="{Binding IsMeshBuilding.Value, Mode=OneWay}"
+                                                            BusyText="メッシュ生成中...">
+                                                <ui:WcuViewport AutomationProperties.AutomationId="Viewport"
+                                                                MeshSource="{Binding Meshes}"
+                                                                ColorScale="{Binding ResultScale}"
+                                                                DeformationScale="{Binding EffectiveDeformationScale.Value, Mode=OneWay}"
+                                                                ShowUndeformedWireframe="{Binding ShowUndeformedWireframe.Value, Mode=OneWay}"
+                                                                PickMode="{Binding PickMode.Value, Mode=OneWay}">
+                                                    <b:Interaction.Behaviors>
+                                                        <behaviors:ViewportFitBehavior
+                                                            FitRequest="{Binding FitRequest.Value, Mode=OneWay}" />
+                                                        <behaviors:ViewportStandardViewBehavior
+                                                            Request="{Binding ViewRequest.Value, Mode=OneWay}" />
+                                                        <behaviors:ViewportProbeBehavior
+                                                            ProbeCommand="{Binding ProbeCommand}"
+                                                            LabelFormatter="{Binding ProbeLabelFormatter}"
+                                                            ClearRequest="{Binding AnnotationClearRequest.Value, Mode=OneWay}" />
+                                                    </b:Interaction.Behaviors>
+                                                </ui:WcuViewport>
+                                            </ui:BusyOverlay>
+
+                                            <!-- エンプティステートガイド: 結果が出るまで次の一手を示す(spec 6.27.3) -->
+                                            <Border AutomationProperties.AutomationId="EmptyStateGuide"
+                                                    HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                                                    Margin="16,0,16,20"
+                                                    Padding="16,10"
+                                                    CornerRadius="6"
+                                                    IsHitTestVisible="False"
+                                                    Background="{DynamicResource Wcu.Brush.Surface.Elevated}"
+                                                    BorderBrush="{DynamicResource Wcu.Brush.Border.Default}"
+                                                    BorderThickness="1">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Setter Property="Opacity" Value="0" />
+                                                        <Style.Triggers>
+                                                            <MultiDataTrigger>
+                                                                <MultiDataTrigger.Conditions>
+                                                                    <Condition Binding="{Binding HasResult.Value}" Value="False" />
+                                                                    <Condition Binding="{Binding IsRunning.Value}" Value="False" />
+                                                                </MultiDataTrigger.Conditions>
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                                <MultiDataTrigger.EnterActions>
+                                                                    <!-- 出現のみ 180ms フェード(消える側は即時。spec 6.27.3) -->
+                                                                    <BeginStoryboard>
+                                                                        <Storyboard>
+                                                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                                             To="1" Duration="0:0:0.18" />
+                                                                        </Storyboard>
+                                                                    </BeginStoryboard>
+                                                                </MultiDataTrigger.EnterActions>
+                                                            </MultiDataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <ui:WcuIcon Icon="{x:Static ui:WcuIcons.Info}"
+                                                                Size="16"
+                                                                VerticalAlignment="Center"
+                                                                Foreground="{DynamicResource Wcu.Brush.Accent.Default}" />
+                                                    <TextBlock Margin="10,0,0,0"
+                                                               VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource Wcu.Brush.Text.Secondary}"
+                                                               Text="［モデル］タブで入力を確認 → ［解析］タブの解析実行。完了すると［結果］タブへ自動で切り替わります" />
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
                                     </DockPanel>
                                 </adl:LayoutDocument>
                             </adl:LayoutDocumentPane>
@@ -280,6 +508,67 @@
                                         <ui:HistoryChart SeriesSource="{Binding StudySeries}"
                                                          XLabel="Degrees of freedom"
                                                          YLabel="Metric" />
+                                    </DockPanel>
+                                </adl:LayoutAnchorable>
+                                <adl:LayoutAnchorable Title="ジョブモニタ" ContentId="Cae.Jobs" CanClose="False">
+                                    <!-- 外部 HPC 模擬ジョブの一覧(spec 6.27.4)。
+                                         「解析 → ジョブとして投入」でキューに入る。ローカル実行とは別経路。 -->
+                                    <DockPanel>
+                                        <TextBlock DockPanel.Dock="Top"
+                                                   Margin="8,8,8,4"
+                                                   TextWrapping="Wrap"
+                                                   Foreground="{DynamicResource Wcu.Brush.Text.Secondary}"
+                                                   Text="外部 HPC 模擬キュー。［解析］の▼ →「ジョブとして投入」で追加します(ローカル実行とは別)。" />
+                                        <DataGrid AutomationProperties.AutomationId="JobTable"
+                                                  ItemsSource="{Binding JobRows}"
+                                                  AutoGenerateColumns="False"
+                                                  IsReadOnly="True"
+                                                  CanUserAddRows="False"
+                                                  HeadersVisibility="Column"
+                                                  SelectionMode="Single">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Header="ジョブ" Width="*"
+                                                                    Binding="{Binding Name}" />
+                                                <DataGridTextColumn Header="種別" Width="70"
+                                                                    Binding="{Binding AnalysisTypeText}" />
+                                                <DataGridTextColumn Header="状態" Width="90"
+                                                                    Binding="{Binding StateText}" />
+                                                <DataGridTemplateColumn Header="進捗" Width="120">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <ProgressBar Height="12" Margin="4,0"
+                                                                         Minimum="0" Maximum="1"
+                                                                         Value="{Binding Progress}" />
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+                                                <DataGridTextColumn Header="経過" Width="70"
+                                                                    Binding="{Binding ElapsedText}" />
+                                                <DataGridTemplateColumn Header="操作" Width="220">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <StackPanel Orientation="Horizontal" Margin="2">
+                                                                <Button Content="キャンセル" Margin="0,0,4,0"
+                                                                        Command="{Binding DataContext.CancelJobCommand,
+                                                                            RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                                        CommandParameter="{Binding Id}"
+                                                                        IsEnabled="{Binding CanCancel}" />
+                                                                <Button Content="結果読込" Margin="0,0,4,0"
+                                                                        Command="{Binding DataContext.LoadJobResultCommand,
+                                                                            RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                                        CommandParameter="{Binding Id}"
+                                                                        IsEnabled="{Binding CanLoadResult}" />
+                                                                <Button Content="再投入"
+                                                                        Command="{Binding DataContext.ResubmitJobCommand,
+                                                                            RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                                        CommandParameter="{Binding Id}"
+                                                                        IsEnabled="{Binding CanResubmit}" />
+                                                            </StackPanel>
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+                                            </DataGrid.Columns>
+                                        </DataGrid>
                                     </DockPanel>
                                 </adl:LayoutAnchorable>
                                 <adl:LayoutAnchorable Title="ログ" ContentId="Cae.Log" CanClose="False">

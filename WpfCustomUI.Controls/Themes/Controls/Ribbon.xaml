@@ -1,0 +1,544 @@
+﻿<!--
+    WcuRibbon / WcuRibbonTab / WcuRibbonGroup と、リボン内で使うボタンスタイル群(spec 6.27.2)。
+    - Wcu.Ribbon.Button.Large / .Large.Accent : 縦型大ボタン(アイコン 24 + ラベル)
+    - Wcu.Ribbon.Button.Small                 : 横型小ボタン(アイコン 16 + ラベル)
+    - Wcu.Ribbon.Toggle.Large / .Small        : ToggleButton 変種(IsChecked でアクセント面)
+    - Wcu.Ribbon.SplitButton.Large.Accent     : 縦型大 SplitButton(上=主動作、下=ラベル+メニュー)
+    ボタンのアイコンは wcu:ButtonAssist.Icon で指定する。
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:wcu="clr-namespace:WpfCustomUI.Controls">
+
+    <!-- ================= アプリケーションボタン(タブ列左端) ================= -->
+
+    <Style x:Key="Wcu.Ribbon.ApplicationButton" TargetType="{x:Type wcu:DropDownButton}">
+        <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Accent.Default}" />
+        <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.OnAccent}" />
+        <Setter Property="Padding" Value="16,4" />
+        <Setter Property="FocusVisualStyle" Value="{DynamicResource Wcu.FocusVisual}" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type wcu:DropDownButton}">
+                    <Border x:Name="Root" Background="{TemplateBinding Background}">
+                        <ContentPresenter Margin="{TemplateBinding Padding}"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          RecognizesAccessKey="True" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <!-- メニュー表示中の再クリック抑止(DropDownButton.xaml と同じ流儀) -->
+                        <Trigger Property="IsDropDownOpen" Value="True">
+                            <Setter TargetName="Root" Property="IsHitTestVisible" Value="False" />
+                            <Setter TargetName="Root" Property="Background"
+                                    Value="{DynamicResource Wcu.Brush.Accent.Pressed}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Accent.Hover}" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Accent.Pressed}" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ================= リボン本体 ================= -->
+
+    <Style TargetType="{x:Type wcu:WcuRibbon}">
+        <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Surface.Panel}" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type wcu:WcuRibbon}">
+                    <Grid KeyboardNavigation.TabNavigation="Local">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <!-- タブ列: アプリボタン+タブ+補助領域 -->
+                        <DockPanel LastChildFill="True">
+                            <wcu:DropDownButton x:Name="PART_ApplicationButton"
+                                                DockPanel.Dock="Left"
+                                                Margin="4,2,8,0"
+                                                VerticalAlignment="Bottom"
+                                                Content="{TemplateBinding ApplicationLabel}"
+                                                DropDownMenu="{TemplateBinding ApplicationMenu}"
+                                                AutomationProperties.AutomationId="AppMenuButton"
+                                                Style="{StaticResource Wcu.Ribbon.ApplicationButton}" />
+                            <ContentPresenter DockPanel.Dock="Right"
+                                              Content="{TemplateBinding AuxiliaryContent}"
+                                              VerticalAlignment="Center"
+                                              Margin="8,0" />
+                            <TabPanel IsItemsHost="True"
+                                      VerticalAlignment="Bottom"
+                                      Margin="0,2,0,0" />
+                        </DockPanel>
+
+                        <!-- コンテンツ行(選択タブのグループ)。折り畳みは簡易版=横スクロール -->
+                        <Border Grid.Row="1"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{DynamicResource Wcu.Brush.Border.Default}"
+                                BorderThickness="0,1,0,1">
+                            <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                          VerticalScrollBarVisibility="Disabled"
+                                          Focusable="False">
+                                <!-- PART_SelectedContentHost: TabItemAutomationPeer が選択タブの
+                                     コンテンツを UIA ツリーへ公開するために必要な既定パーツ名 -->
+                                <ContentPresenter x:Name="PART_SelectedContentHost"
+                                                  ContentSource="SelectedContent" MinHeight="64" />
+                            </ScrollViewer>
+                        </Border>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="ApplicationMenu" Value="{x:Null}">
+                            <Setter TargetName="PART_ApplicationButton" Property="Visibility" Value="Collapsed" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ================= リボンタブ ================= -->
+
+    <Style TargetType="{x:Type wcu:WcuRibbonTab}">
+        <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Secondary}" />
+        <Setter Property="Padding" Value="14,4" />
+        <Setter Property="FocusVisualStyle" Value="{DynamicResource Wcu.FocusVisual}" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type wcu:WcuRibbonTab}">
+                    <Border x:Name="Root"
+                            Background="Transparent"
+                            BorderBrush="Transparent"
+                            BorderThickness="1,1,1,0"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter ContentSource="Header"
+                                          VerticalAlignment="Center"
+                                          RecognizesAccessKey="True" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{DynamicResource Wcu.Brush.State.Hover}" />
+                        </Trigger>
+                        <!-- 選択タブはコンテンツ行と一体化(下辺の境界線を隠す) -->
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Primary}" />
+                            <Setter Property="Panel.ZIndex" Value="1" />
+                            <Setter TargetName="Root" Property="Background" Value="{DynamicResource Wcu.Brush.Surface.Panel}" />
+                            <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Border.Default}" />
+                            <Setter TargetName="Root" Property="Margin" Value="0,0,0,-1" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Disabled}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ================= リボングループ ================= -->
+
+    <Style TargetType="{x:Type wcu:WcuRibbonGroup}">
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="ItemsPanel">
+            <Setter.Value>
+                <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+            </Setter.Value>
+        </Setter>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type wcu:WcuRibbonGroup}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <ItemsPresenter Margin="4,3,4,1" VerticalAlignment="Center" />
+                            <ContentPresenter Grid.Row="1"
+                                              ContentSource="Header"
+                                              HorizontalAlignment="Center"
+                                              Margin="8,0,8,2"
+                                              TextElement.Foreground="{DynamicResource Wcu.Brush.Text.Secondary}"
+                                              TextElement.FontSize="{DynamicResource Wcu.FontSize.S}" />
+                        </Grid>
+                        <Border Grid.Column="1"
+                                Width="1"
+                                Background="{DynamicResource Wcu.Brush.Border.Default}"
+                                Margin="2,6" />
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ================= リボン大ボタン(縦型: アイコン 24 + ラベル) ================= -->
+
+    <Style x:Key="Wcu.Ribbon.Button.Large" TargetType="{x:Type Button}">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Primary}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="MinWidth" Value="46" />
+        <Setter Property="Padding" Value="7,5,7,3" />
+        <Setter Property="Margin" Value="1,0" />
+        <Setter Property="FontSize" Value="{DynamicResource Wcu.FontSize.S}" />
+        <Setter Property="FocusVisualStyle" Value="{DynamicResource Wcu.FocusVisual}" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type Button}">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{DynamicResource Wcu.CornerRadius}"
+                            Padding="{TemplateBinding Padding}">
+                        <StackPanel>
+                            <wcu:WcuIcon Icon="{TemplateBinding wcu:ButtonAssist.Icon}"
+                                         Size="24"
+                                         Foreground="{TemplateBinding Foreground}"
+                                         HorizontalAlignment="Center" />
+                            <ContentPresenter Margin="0,3,0,0"
+                                              HorizontalAlignment="Center"
+                                              RecognizesAccessKey="True" />
+                        </StackPanel>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Control.Hover}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Border.Default}" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Control.Pressed}" />
+            </Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Border.Focus}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Disabled}" />
+                <Setter Property="Opacity" Value="0.6" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="Wcu.Ribbon.Button.Large.Accent" TargetType="{x:Type Button}"
+           BasedOn="{StaticResource Wcu.Ribbon.Button.Large}">
+        <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Accent.Default}" />
+        <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.OnAccent}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Accent.Default}" />
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Accent.Hover}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Accent.Hover}" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Accent.Pressed}" />
+            </Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Text.OnAccent}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Disabled}" />
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Control.Background}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Border.Default}" />
+                <Setter Property="Opacity" Value="0.6" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ================= リボン小ボタン(横型: アイコン 16 + ラベル) ================= -->
+
+    <Style x:Key="Wcu.Ribbon.Button.Small" TargetType="{x:Type Button}">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Primary}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="Padding" Value="5,1" />
+        <Setter Property="MinHeight" Value="21" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="FocusVisualStyle" Value="{DynamicResource Wcu.FocusVisual}" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type Button}">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{DynamicResource Wcu.CornerRadius}">
+                        <StackPanel Orientation="Horizontal"
+                                    Margin="{TemplateBinding Padding}"
+                                    VerticalAlignment="Center">
+                            <wcu:WcuIcon x:Name="ButtonIcon"
+                                         Icon="{TemplateBinding wcu:ButtonAssist.Icon}"
+                                         Size="16"
+                                         Foreground="{TemplateBinding Foreground}"
+                                         VerticalAlignment="Center"
+                                         Margin="0,0,5,0" />
+                            <ContentPresenter VerticalAlignment="Center" RecognizesAccessKey="True" />
+                        </StackPanel>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="wcu:ButtonAssist.Icon" Value="{x:Null}">
+                            <Setter TargetName="ButtonIcon" Property="Visibility" Value="Collapsed" />
+                            <Setter TargetName="ButtonIcon" Property="Margin" Value="0" />
+                        </Trigger>
+                        <Trigger Property="Content" Value="{x:Null}">
+                            <Setter TargetName="ButtonIcon" Property="Margin" Value="0" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Control.Hover}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Border.Default}" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Control.Pressed}" />
+            </Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Border.Focus}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Disabled}" />
+                <Setter Property="Opacity" Value="0.6" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ================= リボントグル(ToggleButton 変種) ================= -->
+
+    <Style x:Key="Wcu.Ribbon.Toggle.Large" TargetType="{x:Type ToggleButton}">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Primary}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="MinWidth" Value="46" />
+        <Setter Property="Padding" Value="7,5,7,3" />
+        <Setter Property="Margin" Value="1,0" />
+        <Setter Property="FontSize" Value="{DynamicResource Wcu.FontSize.S}" />
+        <Setter Property="FocusVisualStyle" Value="{DynamicResource Wcu.FocusVisual}" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ToggleButton}">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{DynamicResource Wcu.CornerRadius}"
+                            Padding="{TemplateBinding Padding}">
+                        <StackPanel>
+                            <wcu:WcuIcon Icon="{TemplateBinding wcu:ButtonAssist.Icon}"
+                                         Size="24"
+                                         Foreground="{TemplateBinding Foreground}"
+                                         HorizontalAlignment="Center" />
+                            <ContentPresenter Margin="0,3,0,0"
+                                              HorizontalAlignment="Center"
+                                              RecognizesAccessKey="True" />
+                        </StackPanel>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Control.Hover}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Border.Default}" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Control.Pressed}" />
+            </Trigger>
+            <Trigger Property="IsChecked" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Accent.Muted}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Accent.Default}" />
+            </Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Border.Focus}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Disabled}" />
+                <Setter Property="Opacity" Value="0.6" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="Wcu.Ribbon.Toggle.Small" TargetType="{x:Type ToggleButton}">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Primary}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="Padding" Value="5,1" />
+        <Setter Property="MinHeight" Value="21" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="FocusVisualStyle" Value="{DynamicResource Wcu.FocusVisual}" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ToggleButton}">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{DynamicResource Wcu.CornerRadius}">
+                        <StackPanel Orientation="Horizontal"
+                                    Margin="{TemplateBinding Padding}"
+                                    VerticalAlignment="Center">
+                            <wcu:WcuIcon x:Name="ButtonIcon"
+                                         Icon="{TemplateBinding wcu:ButtonAssist.Icon}"
+                                         Size="16"
+                                         Foreground="{TemplateBinding Foreground}"
+                                         VerticalAlignment="Center"
+                                         Margin="0,0,5,0" />
+                            <ContentPresenter VerticalAlignment="Center" RecognizesAccessKey="True" />
+                        </StackPanel>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="wcu:ButtonAssist.Icon" Value="{x:Null}">
+                            <Setter TargetName="ButtonIcon" Property="Visibility" Value="Collapsed" />
+                            <Setter TargetName="ButtonIcon" Property="Margin" Value="0" />
+                        </Trigger>
+                        <Trigger Property="Content" Value="{x:Null}">
+                            <Setter TargetName="ButtonIcon" Property="Margin" Value="0" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Control.Hover}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Border.Default}" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Control.Pressed}" />
+            </Trigger>
+            <Trigger Property="IsChecked" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Accent.Muted}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Accent.Default}" />
+            </Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Border.Focus}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Disabled}" />
+                <Setter Property="Opacity" Value="0.6" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ================= リボン大 SplitButton(主動線用アクセント) ================= -->
+
+    <Style x:Key="Wcu.Ribbon.SplitButton.Large.Accent" TargetType="{x:Type wcu:SplitButton}">
+        <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Accent.Default}" />
+        <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.OnAccent}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Accent.Default}" />
+        <Setter Property="MinWidth" Value="52" />
+        <Setter Property="Margin" Value="1,0" />
+        <Setter Property="FontSize" Value="{DynamicResource Wcu.FontSize.S}" />
+        <Setter Property="FocusVisualStyle" Value="{DynamicResource Wcu.FocusVisual}" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type wcu:SplitButton}">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{DynamicResource Wcu.CornerRadius}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <!-- 上段=主動作(アイコン)。SplitButton 本体のクリックで Command 実行 -->
+                            <wcu:WcuIcon Icon="{TemplateBinding wcu:ButtonAssist.Icon}"
+                                         Size="24"
+                                         Foreground="{TemplateBinding Foreground}"
+                                         Margin="10,6,10,1" />
+                            <!-- 下段=ラベル+シェブロン。クリックでメニューを開く -->
+                            <Button x:Name="PART_DropDownButton"
+                                    Grid.Row="1"
+                                    Focusable="False"
+                                    Foreground="{TemplateBinding Foreground}"
+                                    Content="{TemplateBinding Content}"
+                                    Background="Transparent">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="{x:Type Button}">
+                                        <Border Background="{TemplateBinding Background}"
+                                                CornerRadius="0,0,2,2"
+                                                Padding="7,0,7,3">
+                                            <StackPanel Orientation="Horizontal"
+                                                        HorizontalAlignment="Center"
+                                                        VerticalAlignment="Center">
+                                                <ContentPresenter RecognizesAccessKey="True"
+                                                                  VerticalAlignment="Center" />
+                                                <Path Data="M 0,0 L 3,3 L 6,0"
+                                                      Stroke="{TemplateBinding Foreground}"
+                                                      StrokeThickness="1.2"
+                                                      VerticalAlignment="Center"
+                                                      Margin="5,1,0,0" />
+                                            </StackPanel>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Background"
+                                                        Value="{DynamicResource Wcu.Brush.State.Hover}" />
+                                            </Trigger>
+                                            <Trigger Property="IsPressed" Value="True">
+                                                <Setter Property="Background"
+                                                        Value="{DynamicResource Wcu.Brush.State.Pressed}" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <!-- メニュー表示中は矢印部のみヒットテスト対象外(DropDownButton.xaml と同じ流儀) -->
+                        <Trigger Property="IsDropDownOpen" Value="True">
+                            <Setter TargetName="PART_DropDownButton" Property="IsHitTestVisible" Value="False" />
+                            <Setter TargetName="PART_DropDownButton" Property="Background"
+                                    Value="{DynamicResource Wcu.Brush.State.Pressed}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Accent.Hover}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Accent.Hover}" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Accent.Pressed}" />
+            </Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Text.OnAccent}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Disabled}" />
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Control.Background}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Border.Default}" />
+                <Setter Property="Opacity" Value="0.6" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+</ResourceDictionary>

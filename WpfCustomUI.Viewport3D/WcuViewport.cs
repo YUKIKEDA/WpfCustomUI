@@ -1138,16 +1138,20 @@ public class WcuViewport : Control
         GeometryBuildProgressChanged?.Invoke(this, new ViewportBuildProgressEventArgs("準備", 0.0));
 
         // デバイスは AddRef 済みリースで持ち出す: 構築中にレンダラーが破棄(デバイスロスト・
-        // アンロード)されてもバックグラウンドの CreateBuffer が解放済みデバイスに触れない
+        // アンロード)されてもバックグラウンドの CreateBuffer が解放済みデバイスに触れない。
+        // RentDevice は追加の AddRef を返すので using で対になる Release を保証する
+        // (Silk.NET ComPtr コンストラクタは AddRef する。生ポインタを所有権付きで返すと二重になる)
         using var lease = renderer.AcquireDeviceLease();
-        var device = lease.Device;
+        using var device = lease.RentDevice();
 
         GeometryBuildResult? result = null;
         try
         {
+            // ComPtr は構造体のビットコピーで渡す(追加 AddRef なし)。所有権は device/lease 側
+            var deviceForBuild = device;
             result = await Task.Run(
                 () => BuildGeometryCore(
-                    device, meshes, edgeLimit, lodThreshold, token,
+                    deviceForBuild, meshes, edgeLimit, lodThreshold, token,
                     (stage, progress) => ReportBuildProgress(generation, stage, progress)),
                 CancellationToken.None);
         }
@@ -1161,6 +1165,8 @@ public class WcuViewport : Control
             if (_buildCoordinator.IsCurrent(generation))
             {
                 SetValue(IsGeometryBuildingPropertyKey, false);
+                // 失敗した構築の部分結果が残っていれば先に解放(デバイスより前に)
+                DisposeBuildResult(result);
                 ReleaseRenderer();
                 if (++_consecutiveFailures >= 2)
                 {
@@ -1170,6 +1176,10 @@ public class WcuViewport : Control
                 {
                     InvalidateViewport();
                 }
+            }
+            else
+            {
+                DisposeBuildResult(result);
             }
 
             return;
@@ -1320,6 +1330,8 @@ public class WcuViewport : Control
         {
             gpu.Dispose();
         }
+
+        result.Meshes.Clear();
     }
 
     /// <summary>

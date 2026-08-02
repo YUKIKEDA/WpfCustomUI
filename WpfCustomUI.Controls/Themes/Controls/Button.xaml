@@ -1,11 +1,18 @@
 <!--
-    Button スタイル。
+    Button スタイル(4 階層。spec 6.27.2)。
+    - Wcu.Button          : Standard(既定)。枠線+控えめ背景の通常操作
+    - Wcu.Button.Accent   : 主動線(実行・OK 等)。画面に原則 1 つ
+    - Wcu.Button.Subtle   : ゴースト。背景なし・ホバーで浮く補助操作
+    - Wcu.Button.Danger   : 破壊的操作(削除等)
+    - Wcu.Button.Icon     : 正方形のアイコンボタン(ツールバー用ゴースト。spec 6.8.1)
     状態別の色はテンプレートではなく Style.Triggers で変えることで、
-    バリアント(Wcu.Button.Accent)がトリガーの差し替えだけで作れるようにしている。
+    バリアントがトリガーの差し替えだけで作れるようにしている。
+    wcu:ButtonAssist.Icon(Geometry)を設定するとコンテンツ左にアイコンを表示する。
 -->
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:wcu="clr-namespace:WpfCustomUI.Controls">
 
     <Style x:Key="Wcu.Button" TargetType="{x:Type Button}">
         <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Control.Background}" />
@@ -25,11 +32,30 @@
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="{DynamicResource Wcu.CornerRadius}">
-                        <ContentPresenter Margin="{TemplateBinding Padding}"
-                                          HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
-                                          RecognizesAccessKey="True" />
+                        <StackPanel Orientation="Horizontal"
+                                    Margin="{TemplateBinding Padding}"
+                                    HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                    VerticalAlignment="{TemplateBinding VerticalContentAlignment}">
+                            <wcu:WcuIcon x:Name="ButtonIcon"
+                                         Icon="{TemplateBinding wcu:ButtonAssist.Icon}"
+                                         Size="{TemplateBinding wcu:ButtonAssist.IconSize}"
+                                         Foreground="{TemplateBinding Foreground}"
+                                         VerticalAlignment="Center"
+                                         Margin="0,0,6,0" />
+                            <ContentPresenter VerticalAlignment="Center"
+                                              RecognizesAccessKey="True" />
+                        </StackPanel>
                     </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="wcu:ButtonAssist.Icon" Value="{x:Null}">
+                            <Setter TargetName="ButtonIcon" Property="Visibility" Value="Collapsed" />
+                            <Setter TargetName="ButtonIcon" Property="Margin" Value="0" />
+                        </Trigger>
+                        <!-- アイコンのみ(Content なし)の場合は余白を作らない -->
+                        <Trigger Property="Content" Value="{x:Null}">
+                            <Setter TargetName="ButtonIcon" Property="Margin" Value="0" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
@@ -77,6 +103,54 @@
         </Style.Triggers>
     </Style>
 
+    <!-- 補助操作用のゴーストボタン(背景なし・ホバーで浮く) -->
+    <Style x:Key="Wcu.Button.Subtle" TargetType="{x:Type Button}" BasedOn="{StaticResource Wcu.Button}">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Control.Hover}" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Control.Pressed}" />
+            </Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Border.Focus}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Disabled}" />
+                <Setter Property="Opacity" Value="0.6" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- 破壊的操作(削除等)用 -->
+    <Style x:Key="Wcu.Button.Danger" TargetType="{x:Type Button}" BasedOn="{StaticResource Wcu.Button}">
+        <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Danger.Default}" />
+        <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.OnAccent}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Danger.Default}" />
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Danger.Hover}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Danger.Hover}" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Danger.Pressed}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Danger.Pressed}" />
+            </Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Text.OnAccent}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Disabled}" />
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Control.Background}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Border.Default}" />
+                <Setter Property="Opacity" Value="0.6" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
     <!-- アイコンボタン(ツールバー外でも使えるゴーストボタン。spec 6.8.1) -->
     <Style x:Key="Wcu.Button.Icon" TargetType="{x:Type Button}">
         <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Primary}" />
@@ -92,9 +166,24 @@
                             Background="Transparent"
                             CornerRadius="{DynamicResource Wcu.CornerRadius}"
                             Padding="{TemplateBinding Padding}">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <wcu:WcuIcon x:Name="ButtonIcon"
+                                         Icon="{TemplateBinding wcu:ButtonAssist.Icon}"
+                                         Size="{TemplateBinding wcu:ButtonAssist.IconSize}"
+                                         Foreground="{TemplateBinding Foreground}" />
+                            <!-- ButtonAssist.Icon 使用時は Content を出さない(二重表示防止)。
+                                 Icon 未指定時のみトリガーで Content 表示に切り替える -->
+                            <ContentPresenter x:Name="ContentHost"
+                                              Visibility="Collapsed"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Grid>
                     </Border>
                     <ControlTemplate.Triggers>
+                        <Trigger Property="wcu:ButtonAssist.Icon" Value="{x:Null}">
+                            <Setter TargetName="ButtonIcon" Property="Visibility" Value="Collapsed" />
+                            <Setter TargetName="ContentHost" Property="Visibility" Value="Visible" />
+                        </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Root" Property="Background" Value="{DynamicResource Wcu.Brush.Control.Hover}" />
                         </Trigger>

@@ -48,6 +48,11 @@
     <Color x:Key="Wcu.Color.Success">#89D185</Color>
     <Color x:Key="Wcu.Color.Info">#75BEFF</Color>
 
+    <!-- Danger(破壊的操作ボタンの面。Error は文字/枠用の明るい赤) -->
+    <Color x:Key="Wcu.Color.Danger.Default">#C42B1C</Color>
+    <Color x:Key="Wcu.Color.Danger.Hover">#D13438</Color>
+    <Color x:Key="Wcu.Color.Danger.Pressed">#A4262C</Color>
+
     <!--
         アクセントの現在値(ThemeManager.SetAccent で実行時に上書きされ得る色キー)。
         ブラシを直接使えない場所はこの色キーを DynamicResource で参照すると
@@ -102,5 +107,10 @@
     <SolidColorBrush x:Key="Wcu.Brush.Warning" Color="{StaticResource Wcu.Color.Warning}" />
     <SolidColorBrush x:Key="Wcu.Brush.Success" Color="{StaticResource Wcu.Color.Success}" />
     <SolidColorBrush x:Key="Wcu.Brush.Info" Color="{StaticResource Wcu.Color.Info}" />
+
+    <!-- Danger -->
+    <SolidColorBrush x:Key="Wcu.Brush.Danger.Default" Color="{StaticResource Wcu.Color.Danger.Default}" />
+    <SolidColorBrush x:Key="Wcu.Brush.Danger.Hover" Color="{StaticResource Wcu.Color.Danger.Hover}" />
+    <SolidColorBrush x:Key="Wcu.Brush.Danger.Pressed" Color="{StaticResource Wcu.Color.Danger.Pressed}" />
 
 </ResourceDictionary>

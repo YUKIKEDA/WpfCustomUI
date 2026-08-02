@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:wcu="clr-namespace:WpfCustomUI.Controls;assembly=WpfCustomUI.Controls"
              mc:Ignorable="d">
     <UserControl.Resources>
         <Style x:Key="SectionHeader" TargetType="TextBlock">
@@ -17,12 +18,29 @@
             <TextBlock Text="Inputs &amp; Buttons"
                        FontSize="20" FontWeight="SemiBold" Margin="0,0,0,4" />
 
-            <TextBlock Text="Button" Style="{StaticResource SectionHeader}" />
+            <TextBlock Text="Button (4 階層: Accent / Standard / Subtle / Danger)" Style="{StaticResource SectionHeader}" />
             <StackPanel Orientation="Horizontal">
-                <Button Content="Standard" Margin="0,0,8,0" />
                 <Button Content="Accent" Style="{DynamicResource Wcu.Button.Accent}" Margin="0,0,8,0" />
+                <Button Content="Standard" Margin="0,0,8,0" />
+                <Button Content="Subtle" Style="{DynamicResource Wcu.Button.Subtle}" Margin="0,0,8,0" />
+                <Button Content="Danger" Style="{DynamicResource Wcu.Button.Danger}" Margin="0,0,8,0" />
                 <Button Content="Disabled" IsEnabled="False" Margin="0,0,8,0" />
                 <Button Content="Accent Disabled" Style="{DynamicResource Wcu.Button.Accent}" IsEnabled="False" />
+            </StackPanel>
+
+            <TextBlock Text="アイコン付き (wcu:ButtonAssist.Icon)" Style="{StaticResource SectionHeader}" />
+            <StackPanel Orientation="Horizontal">
+                <Button Content="実行" Style="{DynamicResource Wcu.Button.Accent}"
+                        wcu:ButtonAssist.Icon="{x:Static wcu:WcuIcons.Play}" Margin="0,0,8,0" />
+                <Button Content="保存"
+                        wcu:ButtonAssist.Icon="{x:Static wcu:WcuIcons.Save}" Margin="0,0,8,0" />
+                <Button Content="フィルタ" Style="{DynamicResource Wcu.Button.Subtle}"
+                        wcu:ButtonAssist.Icon="{x:Static wcu:WcuIcons.Filter}" Margin="0,0,8,0" />
+                <Button Content="削除" Style="{DynamicResource Wcu.Button.Danger}"
+                        wcu:ButtonAssist.Icon="{x:Static wcu:WcuIcons.Delete}" Margin="0,0,8,0" />
+                <Button Style="{DynamicResource Wcu.Button.Icon}"
+                        wcu:ButtonAssist.Icon="{x:Static wcu:WcuIcons.Settings}"
+                        ToolTip="設定" />
             </StackPanel>
 
             <TextBlock Text="CheckBox / RadioButton" Style="{StaticResource SectionHeader}" />

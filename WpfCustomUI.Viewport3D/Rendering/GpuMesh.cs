@@ -20,6 +20,7 @@ internal sealed unsafe class GpuMeshChunk : IDisposable
     private ComPtr<ID3D11Buffer> _displacementBuffer;
     private ComPtr<ID3D11Buffer> _triangleIndexBuffer;
     private ComPtr<ID3D11Buffer> _edgeIndexBuffer;
+    private int _disposed;
 
     internal GpuMeshChunk(int[] globalVertices, uint triangleBase)
     {
@@ -54,24 +55,55 @@ internal sealed unsafe class GpuMeshChunk : IDisposable
 
     public ID3D11Buffer* EdgeIndexBufferHandle => _edgeIndexBuffer.Handle;
 
-    internal void SetVertexBuffer(ComPtr<ID3D11Buffer> buffer) => _vertexBuffer = buffer;
+    internal void SetVertexBuffer(ComPtr<ID3D11Buffer> buffer)
+    {
+        ReleaseComPtr(ref _vertexBuffer);
+        _vertexBuffer = buffer;
+    }
 
-    internal void SetDisplacementBuffer(ComPtr<ID3D11Buffer> buffer) => _displacementBuffer = buffer;
+    internal void SetDisplacementBuffer(ComPtr<ID3D11Buffer> buffer)
+    {
+        ReleaseComPtr(ref _displacementBuffer);
+        _displacementBuffer = buffer;
+    }
 
-    internal void SetTriangleIndexBuffer(ComPtr<ID3D11Buffer> buffer) => _triangleIndexBuffer = buffer;
+    internal void SetTriangleIndexBuffer(ComPtr<ID3D11Buffer> buffer)
+    {
+        ReleaseComPtr(ref _triangleIndexBuffer);
+        _triangleIndexBuffer = buffer;
+    }
 
-    internal void SetEdgeIndexBuffer(ComPtr<ID3D11Buffer> buffer) => _edgeIndexBuffer = buffer;
+    internal void SetEdgeIndexBuffer(ComPtr<ID3D11Buffer> buffer)
+    {
+        ReleaseComPtr(ref _edgeIndexBuffer);
+        _edgeIndexBuffer = buffer;
+    }
 
     public void Dispose()
     {
-        _vertexBuffer.Dispose();
-        _displacementBuffer.Dispose();
-        _triangleIndexBuffer.Dispose();
-        _edgeIndexBuffer.Dispose();
-        _vertexBuffer = default;
-        _displacementBuffer = default;
-        _triangleIndexBuffer = default;
-        _edgeIndexBuffer = default;
+        // 二重 Dispose(世代破棄とキャンセル経路の競合など)で AccessViolation にしない
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
+        ReleaseComPtr(ref _vertexBuffer);
+        ReleaseComPtr(ref _displacementBuffer);
+        ReleaseComPtr(ref _triangleIndexBuffer);
+        ReleaseComPtr(ref _edgeIndexBuffer);
+    }
+
+    /// <summary>
+    /// Silk.NET の <see cref="ComPtr{T}.Dispose"/> は Handle を null にしないため、
+    /// Detach → Release で二重解放を防ぐ。
+    /// </summary>
+    private static void ReleaseComPtr(ref ComPtr<ID3D11Buffer> buffer)
+    {
+        var handle = buffer.Detach();
+        if (handle is not null)
+        {
+            ((IUnknown*)handle)->Release();
+        }
     }
 }
 
@@ -385,8 +417,11 @@ internal sealed unsafe class GpuMesh : IDisposable
 
             var data = GatherDisplacements(displacements, chunk.GlobalVertices, sourceMap);
             MappedSubresource mapped = default;
-            var buffer = new ComPtr<ID3D11Buffer>(chunk.DisplacementBufferHandle);
-            SilkMarshal.ThrowHResult(context.Map(buffer, 0, Map.WriteDiscard, 0, ref mapped));
+            // 生ポインタで Map する。new ComPtr(handle) は AddRef するため、
+            // Dispose し忘れるとリーク、Dispose するとチャンク所有分と二重解放になる
+            var bufferHandle = chunk.DisplacementBufferHandle;
+            SilkMarshal.ThrowHResult(context.Map(
+                (ID3D11Resource*)bufferHandle, 0, Map.WriteDiscard, 0, ref mapped));
             try
             {
                 fixed (float* pData = data)
@@ -396,7 +431,7 @@ internal sealed unsafe class GpuMesh : IDisposable
             }
             finally
             {
-                context.Unmap(buffer, 0);
+                context.Unmap((ID3D11Resource*)bufferHandle, 0);
             }
         }
     }
@@ -610,9 +645,13 @@ internal sealed unsafe class GpuMesh : IDisposable
 
     private void ReleaseGlyphBuffers()
     {
-        foreach (var (buffer, _, _) in _glyphBuffers)
+        for (var i = 0; i < _glyphBuffers.Count; i++)
         {
-            buffer.Dispose();
+            var handle = _glyphBuffers[i].Buffer.Detach();
+            if (handle is not null)
+            {
+                ((IUnknown*)handle)->Release();
+            }
         }
 
         _glyphBuffers.Clear();

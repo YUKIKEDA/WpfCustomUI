@@ -38,6 +38,7 @@ public partial class App : System.Windows.Application
         // Infrastructure 層
         builder.Services.AddSingleton<IProjectRepository, JsonProjectRepository>();
         builder.Services.AddSingleton<ISettingsService, JsonSettingsService>();
+        builder.Services.AddSingleton<IJobClient, SimulatedHpcClient>();
 
         // Presentation 層
         builder.Services.AddSingleton<IDialogService, DialogService>();

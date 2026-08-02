@@ -4,6 +4,16 @@
              xmlns:ui="https://schemas.wpfcustomui.dev/xaml"
              ShutdownMode="OnMainWindowClose">
     <Application.Resources>
-        <ui:WcuTheme Theme="Dark" />
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ui:WcuTheme Theme="Dark" />
+            </ResourceDictionary.MergedDictionaries>
+            <!-- タイトルバー/タスクバー用アプリアイコン(ウィンドウ属性から参照するため App 側に置く) -->
+            <DrawingImage x:Key="CaeStudio.AppIcon">
+                <DrawingImage.Drawing>
+                    <GeometryDrawing Brush="#007ACC" Geometry="{x:Static ui:WcuIcons.Cube}" />
+                </DrawingImage.Drawing>
+            </DrawingImage>
+        </ResourceDictionary>
     </Application.Resources>
 </Application>

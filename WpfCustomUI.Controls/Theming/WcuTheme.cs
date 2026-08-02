@@ -39,6 +39,11 @@ public class WcuTheme : ResourceDictionary
         // 暗黙 DataTemplate(エディタ選択)はアプリのリソースツリーから
         // 確実に見つかるよう、Generic.xaml とは別にここでもマージする
         "Controls/PropertyGrid.xaml",
+        // リボンの名前付きボタンスタイル(Wcu.Ribbon.Button.* 等)と
+        // DropDownButton/SplitButton の階層バリアント(Wcu.*.Accent / .Subtle)を
+        // アプリから StaticResource 参照できるよう、Generic.xaml とは別にここでもマージする
+        "Controls/Ribbon.xaml",
+        "Controls/DropDownButton.xaml",
     ];
 
     private WcuThemeVariant _theme;
@@ -72,6 +77,9 @@ public class WcuTheme : ResourceDictionary
         MergedDictionaries.Clear();
         MergedDictionaries.Add(Load("Tokens.Core.xaml"));
         MergedDictionaries.Add(Load($"Tokens.{variant}.xaml"));
+
+        // 内蔵アイコン(Wcu.Icon.* キー。テーマ非依存、Frozen Geometry の共有辞書)
+        MergedDictionaries.Add(WcuIcons.CreateResourceDictionary());
 
         // コントロールスタイルはトークンを DynamicResource 参照するため、
         // テーマバリアントに依存せず同じ辞書を使う。

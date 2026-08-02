@@ -11,7 +11,9 @@ namespace WpfCustomUI.Gallery
         private static readonly (string Title, Func<object> CreatePage)[] Pages =
         [
             ("Design Tokens", () => new TokensPage()),
+            ("Icons", () => new IconsPage()),
             ("Inputs & Buttons", () => new InputsPage()),
+            ("Ribbon", () => new RibbonPage()),
             ("Navigation & Menus", () => new NavigationPage()),
             ("NumericBox & Expander", () => new NumericPage()),
             ("Pickers & Range", () => new PickersPage()),

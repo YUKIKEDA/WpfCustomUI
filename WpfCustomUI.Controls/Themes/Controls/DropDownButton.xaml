@@ -32,19 +32,35 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <ContentPresenter Margin="{TemplateBinding Padding}"
-                                              HorizontalAlignment="Center"
-                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
-                                              RecognizesAccessKey="True" />
+                            <StackPanel Orientation="Horizontal"
+                                        Margin="{TemplateBinding Padding}"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="{TemplateBinding VerticalContentAlignment}">
+                                <wcu:WcuIcon x:Name="ButtonIcon"
+                                             Icon="{TemplateBinding wcu:ButtonAssist.Icon}"
+                                             Size="{TemplateBinding wcu:ButtonAssist.IconSize}"
+                                             Foreground="{TemplateBinding Foreground}"
+                                             VerticalAlignment="Center"
+                                             Margin="0,0,6,0" />
+                                <ContentPresenter VerticalAlignment="Center"
+                                                  RecognizesAccessKey="True" />
+                            </StackPanel>
                             <Path Grid.Column="1"
                                   Data="M 0,0 L 3,3 L 6,0"
-                                  Stroke="{DynamicResource Wcu.Brush.Text.Secondary}"
+                                  Stroke="{TemplateBinding Foreground}"
                                   StrokeThickness="1.2"
                                   VerticalAlignment="Center"
                                   Margin="0,1,8,0" />
                         </Grid>
                     </Border>
                     <ControlTemplate.Triggers>
+                        <Trigger Property="wcu:ButtonAssist.Icon" Value="{x:Null}">
+                            <Setter TargetName="ButtonIcon" Property="Visibility" Value="Collapsed" />
+                            <Setter TargetName="ButtonIcon" Property="Margin" Value="0" />
+                        </Trigger>
+                        <Trigger Property="Content" Value="{x:Null}">
+                            <Setter TargetName="ButtonIcon" Property="Margin" Value="0" />
+                        </Trigger>
                         <!-- メニュー表示中の再クリック抑止(ファイル冒頭のコメント参照) -->
                         <Trigger Property="IsDropDownOpen" Value="True">
                             <Setter TargetName="Root" Property="IsHitTestVisible" Value="False" />
@@ -97,23 +113,33 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <ContentPresenter Margin="{TemplateBinding Padding}"
-                                              HorizontalAlignment="Center"
-                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
-                                              RecognizesAccessKey="True" />
+                            <StackPanel Orientation="Horizontal"
+                                        Margin="{TemplateBinding Padding}"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="{TemplateBinding VerticalContentAlignment}">
+                                <wcu:WcuIcon x:Name="ButtonIcon"
+                                             Icon="{TemplateBinding wcu:ButtonAssist.Icon}"
+                                             Size="{TemplateBinding wcu:ButtonAssist.IconSize}"
+                                             Foreground="{TemplateBinding Foreground}"
+                                             VerticalAlignment="Center"
+                                             Margin="0,0,6,0" />
+                                <ContentPresenter VerticalAlignment="Center"
+                                                  RecognizesAccessKey="True" />
+                            </StackPanel>
                             <Border Grid.Column="1" Width="1" Margin="0,3"
                                     Background="{DynamicResource Wcu.Brush.Border.Default}" />
                             <!-- 矢印部。クリックはコードビハインドが拾ってメニューを開く -->
                             <Button x:Name="PART_DropDownButton"
                                     Grid.Column="2"
                                     Focusable="False"
+                                    Foreground="{TemplateBinding Foreground}"
                                     Background="Transparent">
                                 <Button.Template>
                                     <ControlTemplate TargetType="{x:Type Button}">
                                         <Border Background="{TemplateBinding Background}"
                                                 CornerRadius="0,2,2,0">
                                             <Path Data="M 0,0 L 3,3 L 6,0"
-                                                  Stroke="{DynamicResource Wcu.Brush.Text.Secondary}"
+                                                  Stroke="{TemplateBinding Foreground}"
                                                   StrokeThickness="1.2"
                                                   VerticalAlignment="Center"
                                                   Margin="6,1,6,0" />
@@ -134,6 +160,13 @@
                         </Grid>
                     </Border>
                     <ControlTemplate.Triggers>
+                        <Trigger Property="wcu:ButtonAssist.Icon" Value="{x:Null}">
+                            <Setter TargetName="ButtonIcon" Property="Visibility" Value="Collapsed" />
+                            <Setter TargetName="ButtonIcon" Property="Margin" Value="0" />
+                        </Trigger>
+                        <Trigger Property="Content" Value="{x:Null}">
+                            <Setter TargetName="ButtonIcon" Property="Margin" Value="0" />
+                        </Trigger>
                         <!-- メニュー表示中は矢印部のみヒットテスト対象外にする(本体は Command 実行可のまま) -->
                         <Trigger Property="IsDropDownOpen" Value="True">
                             <Setter TargetName="PART_DropDownButton" Property="IsHitTestVisible" Value="False" />
@@ -148,6 +181,102 @@
             <Trigger Property="IsMouseOver" Value="True">
                 <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Control.Hover}" />
                 <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Border.Strong}" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Control.Pressed}" />
+            </Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Border.Focus}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Disabled}" />
+                <Setter Property="Opacity" Value="0.6" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ================= 階層バリアント(spec 6.27.2) ================= -->
+
+    <Style x:Key="Wcu.DropDownButton.Accent" TargetType="{x:Type wcu:DropDownButton}"
+           BasedOn="{StaticResource {x:Type wcu:DropDownButton}}">
+        <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Accent.Default}" />
+        <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.OnAccent}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Accent.Default}" />
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Accent.Hover}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Accent.Hover}" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Accent.Pressed}" />
+            </Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Text.OnAccent}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Disabled}" />
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Control.Background}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Border.Default}" />
+                <Setter Property="Opacity" Value="0.6" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="Wcu.DropDownButton.Subtle" TargetType="{x:Type wcu:DropDownButton}"
+           BasedOn="{StaticResource {x:Type wcu:DropDownButton}}">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Control.Hover}" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Control.Pressed}" />
+            </Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Border.Focus}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Disabled}" />
+                <Setter Property="Opacity" Value="0.6" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="Wcu.SplitButton.Accent" TargetType="{x:Type wcu:SplitButton}"
+           BasedOn="{StaticResource {x:Type wcu:SplitButton}}">
+        <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Accent.Default}" />
+        <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.OnAccent}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Accent.Default}" />
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Accent.Hover}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Accent.Hover}" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Accent.Pressed}" />
+            </Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Text.OnAccent}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource Wcu.Brush.Text.Disabled}" />
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Control.Background}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Wcu.Brush.Border.Default}" />
+                <Setter Property="Opacity" Value="0.6" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="Wcu.SplitButton.Subtle" TargetType="{x:Type wcu:SplitButton}"
+           BasedOn="{StaticResource {x:Type wcu:SplitButton}}">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Control.Hover}" />
+                <Setter Property="BorderBrush" Value="Transparent" />
             </Trigger>
             <Trigger Property="IsPressed" Value="True">
                 <Setter Property="Background" Value="{DynamicResource Wcu.Brush.Control.Pressed}" />

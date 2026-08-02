@@ -1132,6 +1132,60 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 - **M2 完了 (2026-08-02)**: 固有値解析(ModalAnalysis 逆反復+M 直交化、ModalMode.MaxAmplitude)+モードテーブル(DataGrid、曲げ卓越モードのみ Euler-Bernoulli 理論値と対応付け——FEM に混ざる軸振動モードは変位方向判別で理論欄「-」)+PlaybackBar 位相スイープ(EffectiveDeformationScale = 基準 × cos(2πk/60) を VM で合成)+パスプロット(WcuPlot+Behavior、Kirsch 厳密解重ね描き)+ヒストグラム+FRF(モード重ね合わせレセプタンス、質量正規化形状をそのまま利用)+プローブ(PickMode.Probe トグル、フォーマッター差し替え、注釈クリア)+標準視点 DropDownButton+凡例パネル(RangeSlider コンター範囲+ColorScaleEditor)。ウィザード/PropertyGrid に解析タイプ選択追加。MVVM ブリッジは全て Behavior(ViewportProbe/StandardView/PathPlot)で View 参照ゼロを維持。xUnit 21 件 green、UIA 21 項目 PASS(モードセル文字列/1 次 421 Hz vs 理論 413.6 Hz/位相スイープ ピクセル差分/注釈ラベル直接アサート)
 - **M3 完了 (2026-08-02)**: 永続化一式(`.wcuproj` JSON via `JsonProjectRepository` / `UserSettings`+`JsonSettingsService` / ドックレイアウト `DockLayout.SaveToString` を設定に同居)+設定ダイアログ(Theme/PathBox/KeyGestureBox)+ファイルメニュー(開く/保存/名前を付けて保存/最近使ったファイル)+SplitButton 解析実行+CheckComboBox 表示項目+SearchBox ツリーフィルタ+BusyOverlay メッシュ生成中+MatrixBox 弾性マトリクス D+HistoryChart メッシュ細分化スタディ+PropertyGrid ColorPropertyItem(パーツ色)。**ライブラリ還元**: `WcuWindow` が TitleBarContent へ DataContext を明示伝播 / `SearchBox`・`MatrixBox`・`PathBox`・`KeyGestureBox` に `FrameworkElementAutomationPeer` を追加(UIA 可視性)。xUnit 27 件 green、`verify-caestudio.ps1` 52 項目 PASS(テーマ切替・設定ダイアログ・SaveAs→JSON 検証→新規切替→Open 往復で節点 729 復元・両テーマスクショ)
 
+## 6.27 Phase 27 — UI/UX 刷新+ジョブ投入模擬
+
+(2026-08-02 の設計インタビューで決定)
+
+### 6.27.1 動機
+
+- CaeStudio の実使用フィードバック: ①プリ→ソルブ→ポストのユーザーフローが UI に現れていない ②ボタンに視覚的強弱がなくどこから触ればよいか不明(特に上部メニュー行) ③アイコンがほぼ皆無 ④パネルが多く情報が未整理 ⑤状態変化で躓くと印象が悪い
+- 改善はライブラリ+CaeStudio の両輪で実施: アイコン/ボタン階層/リボンはライブラリの公開 API として新設し、CaeStudio で実戦投入する(アプリ側 XAML への直書きはライブラリ主役の構図と矛盾するため)
+- 追加要望: 実務の CAE はローカル計算で収まらず外部(スパコン/クラスタ)へジョブを投げて結果を回収するのが主フロー。これを模擬する機構をサンプルに組み込む
+
+### 6.27.2 ライブラリ側新規要素
+
+- **`WcuIcon`+ジオメトリアイコン辞書**: 16px グリッドのラインアイコン約 50 種を `Wcu.Icon.*` の Geometry リソースとして内蔵(§4.5 の方針どおり Fluent UI System Icons(MIT) SVG→Path 変換+CAE 固有は自作)。`WcuIcon` コントロールで Foreground=テーマトークン着色・サイズ指定。依存ゼロ
+- **ボタン 4 階層**: `Accent`(アクセント塗り、画面の主動線に原則 1 つ) / `Standard`(既定、枠線+控えめ背景) / `Subtle`(背景なし・ホバーで浮く、ツールバー/アイコンボタン用) / `Danger`(破壊的操作) の名前付き Style+アイコン添付 DP。SplitButton / DropDownButton にも Accent / Subtle 変種を用意
+- **`WcuRibbon` v1(最小実用核)**: タブ+ラベル付きグループ+大/小ボタン+任意コントロールホスト+Accent 変種+タブ列右端の補助領域。折り畳みは簡易版(はみ出し横スクロール)
+  - バックログ: QAT / Backstage / KeyTips / コンテキストタブ / グループ優先度付きリサイズ(大→小→ドロップダウン化)
+  - 純正 `System.Windows.Controls.Ribbon` は不採用(Office 2010 世代の見た目、巨大テンプレートでトークン載せ替え困難、動作の癖多数。lookless 自作で統一)
+
+### 6.27.3 CaeStudio UI 刷新
+
+- **リボン 4 タブ+メニューバー廃止**: ファイル(アプリボタンのドロップダウン: 新規/開く/保存/最近/設定)/「モデル」(テンプレート・寸法・メッシュ・BC)/「解析」(材料・ソルバ設定・実行・スタディ)/「結果」(フィールド・コンター範囲・プローブ・注釈・アニメ)/「表示」(パネル・エッジ・テーマ・レイアウトリセット)。タブ順=プリ→ソルブ→ポストのワークフローで、タブ自体がユーザーストーリーの可視化になる
+- **フロー誘導 3 点セット**: ①状態連動(結果系コマンドは CanExecute 無効+「結果」タブ淡色化) ②解析完了→「結果」タブ自動切替+コンター表示 ③起動直後のビューポートにエンプティステートガイド(①テンプレート選択→②解析実行のアイコン+説明+主ボタン)
+- **段階連動パネル**: 常設はツリー/プロパティ/ログのみ。解析中は収束モニタ自動アクティブ化、ポスト系(モード表/FRF/ヒストグラム/スタディ)は結果後に表示、低頻度パネル(材料剛性等)は既定非表示で「表示」タブから開く
+- **状態変化は最小主義**: フェード 150〜200ms のみ(Opacity/Transform 限定、レイアウトが動くスライドはドッキングと干渉するため禁止)。実行ボタンは実行中スピナー+「解析中…」に変化。タブ自動切替・テーマ切替は即時
+
+### 6.27.4 ジョブ投入模擬(外部計算資源の模擬)
+
+- **`IJobClient` を Application 層に定義**(非同期投入 / 状態ポーリング / 結果取得 / キャンセル)。リモート実装(SSH/REST)への差し替え口を示すレイヤードの参照実装
+- **`SimulatedHpcClient` を Infrastructure に実装**: キュー待ち時間・実行スロット数・進捗率・稀な失敗を人工的に再現(計算自体は既存 Domain ソルバ)。決定論的でテスト容易
+- **UX**: Accent SplitButton「解析実行」(既定=ローカル即時、ドロップダウン=「ジョブとして投入」)。ジョブモニタパネル(DataGrid: ジョブ名/種別/状態アイコン付きバッジ/進捗バー/経過時間/キャンセル・結果読込・再投入)は初回投入時に自動表示(§6.27.3 の段階連動と整合)。完了トースト→クリックで結果読込
+- **入力スナップショット**: ジョブは投入時点の入力を保持。結果読込時に現在のモデルと不一致なら InfoBar で「モデルが変更されています」警告(実務の再現)
+
+### 6.27.5 検証
+
+- **xUnit**: アイコン辞書の整合性(キー命名/欠落)・リボンの状態ロジック・`SimulatedHpcClient` の状態遷移(投入→待機→実行→完了/失敗/キャンセル)・スナップショット不一致判定
+- **Gallery**: 新規「Icons」ページ(全アイコン一覧+サイズ/色デモ)+「Ribbon」ページ+既存 Buttons 系ページに 4 階層デモ追加
+- **UIA**: Gallery 新ページのスクショ+CaeStudio 新シナリオ(リボンタブ切替→実行→「結果」タブ自動遷移→エンプティステート→パネル自動表示→ジョブ投入→モニタ状態遷移→結果読込)+既存全回帰+両テーマスクショ目視
+
+### 6.27.6 進め方(単一フェーズ・4 マイルストーン)
+
+1. **M1 ライブラリ基盤**: WcuIcon+アイコン辞書 / ボタン 4 階層 / WcuRibbon v1+Gallery ページ+xUnit
+2. **M2 CaeStudio UI 刷新**: リボン移行(メニューバー廃止)・フロー誘導・段階連動パネル・トランジション
+3. **M3 ジョブ投入模擬**: IJobClient / SimulatedHpcClient / ジョブモニタパネル / スナップショット警告
+4. **M4 検証**: UIA 新シナリオ+既存全回帰+両テーマ+spec 記録
+
+各マイルストーン到達点でビルド+テスト green を維持する。
+
+### 6.27.7 マイルストーン記録
+
+- **M1 完了 (2026-08-02)**: `WcuIcon`+`WcuIcons`(66 種 Geometry) / ボタン 4 階層+`ButtonAssist` / `WcuRibbon` v1(`WcuRibbonTab`/`WcuRibbonGroup`+大小ボタン/アプリボタン/補助領域) / Gallery Icons・Ribbon ページ+Inputs 4 階層デモ / xUnit(アイコン辞書・リボン構造) green / 両テーマスクショ
+- **M2 完了 (2026-08-02)**: CaeStudio を `WcuRibbon` 4 タブ(モデル→解析→結果→表示)+ファイルアプリメニューへ移行(メニューバー/ToolBar 廃止)。フロー誘導(`HasResult` で結果タブ淡色化、解析完了→結果タブ自動切替、ビューポート空状態ガイド 180ms フェード)。段階連動パネル(収束/パス/ヒストグラム/FRF/モード/凡例等を VM↔AvalonDock 同期、Loaded 後に Show/Hide)。実行中ラベル「解析中…」。`PART_SelectedContentHost`+ItemsControl の素ピア化でリボン内 UIA Invoke を確保。`capture-phase27-m2.ps1` で起動/解析タブ/完了後の両テーマスクショ
+- **M3 完了 (2026-08-02)**: Application `IJobClient`+`JobInfo`/`JobResult` / Infrastructure `SimulatedHpcClient`(キュー遅延・スロット・進捗・N 件ごとの決定論的失敗、Domain ソルバ委譲) / CaeStudio 解析 SplitButton に「ジョブとして投入」+ジョブモニタ Dock パネル(進捗/キャンセル/結果読込/再投入)+スナップショット不一致 InfoBar / xUnit 4 件 green
+- **M4 完了 (2026-08-02)**: `verify-caestudio.ps1` をリボン UI 向け更新(タブ切替→実行→結果自動遷移→プローブ→表示タブの段階パネル→設定/保存往復) 57 件 PASS。xUnit 全件 green(Controls 106 + Viewport 197 + CaeStudio 31)。`capture-phase27-m2.ps1` で UI 刷新スクショ。Phase 27 完了
+
 ## 7. テスト方針
 
 - **UI に依存しないロジックのみ** xUnit でテストする:
@@ -1172,3 +1226,4 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 | **Phase 24 — ビューポート第9弾(操作性仕上げ)**          | 常時非同期ジオメトリ構築(世代管理+旧シーン表示+IsGeometryBuilding DP+進捗/完了イベント) / ホバープリハイライト(静止時 ID キャッシュ方式、既定 ON、Probe 節点プレビュー) / 貫通選択(RubberBandSelectionMode DP、CPU 並列錐台判定) / Benchmark・Picking ページ拡張                                               | ✅ 完了 (2026-08-01) |
 | **Phase 25 — 統合ミニ CAE シェル**                      | DockingShellWindow の疑似ビューポートを実 WcuViewport 化(静解析 Kirsch+過渡片持ち梁の 2 ドキュメント) / ModelTree 双方向選択同期+可視性 / PropertyGrid 選択連動 / プローブ→LogConsole / ColorScaleEditor+凡例共有 / PlaybackBar / UIA シェル検証新設                                                           | ✅ 完了              |
 | **Phase 26 — CaeStudio(MVVM サンプル CAE アプリ)**      | `samples/CaeStudio.*` 5 プロジェクト(Domain/Application/Infrastructure/App/Tests)。R3+ObservableCollections+Generic Host の完全 MVVM+レイヤード / 2D 平面応力 FEM(静解析 CG+固有値 逆反復、Kirsch・Euler-Bernoulli 厳密解検証) / 全コントロール網羅 / JSON 永続化 / ライブラリ MVVM 対応還元 / UIA 新設+全回帰 | ✅ 完了 (2026-08-02) |
+| **Phase 27 — UI/UX 刷新+ジョブ投入模擬**                | WcuIcon+アイコン辞書(約50種) / ボタン 4 階層(Accent/Standard/Subtle/Danger) / WcuRibbon v1(タブ+グループ+大小ボタン) / CaeStudio リボン移行+フロー誘導(自動タブ切替/エンプティステート)+段階連動パネル+最小主義トランジション / IJobClient+SimulatedHpcClient(外部ジョブ投入模擬)+ジョブモニタ / Gallery Icons・Ribbon ページ / UIA 新シナリオ+全回帰                                                              | ✅ 完了 (2026-08-02) |

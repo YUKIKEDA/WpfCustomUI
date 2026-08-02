@@ -65,6 +65,11 @@ internal readonly record struct RenderItem(
 /// AddRef 済みデバイス参照(spec 6.24.2)。構築完了(または破棄)時に必ず Dispose すること。
 /// Dispose は任意スレッドから呼べる(COM Release はスレッドセーフ)。
 /// </summary>
+/// <remarks>
+/// Silk.NET の <see cref="ComPtr{T}"/> コンストラクタは AddRef するため、生ポインタを
+/// <c>new ComPtr(ptr)</c> で包んで返すと二重 AddRef になる。ここでは生ポインタを公開し、
+/// 呼び出し側がリース期間中だけそれを使う(所有権はリースが保持する)。
+/// </remarks>
 internal sealed unsafe class DeviceLease : IDisposable
 {
     private ID3D11Device* _device;
@@ -75,8 +80,13 @@ internal sealed unsafe class DeviceLease : IDisposable
         _device = device;
     }
 
-    /// <summary>リース中のデバイス(Dispose 後は使用不可)。</summary>
-    public ComPtr<ID3D11Device> Device => new(_device);
+    /// <summary>リース中のデバイス生ポインタ(Dispose 後は null。所有権はリース側)。</summary>
+    public ID3D11Device* DeviceHandle => _device;
+
+    /// <summary>
+    /// 一時的な AddRef 済み <see cref="ComPtr{T}"/>。呼び出し側は using で必ず解放する。
+    /// </summary>
+    public ComPtr<ID3D11Device> RentDevice() => new(_device);
 
     public void Dispose()
     {

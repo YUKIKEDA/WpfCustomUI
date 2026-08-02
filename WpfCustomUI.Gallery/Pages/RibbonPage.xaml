@@ -1,0 +1,144 @@
+<UserControl x:Class="WpfCustomUI.Gallery.Pages.RibbonPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:wcu="clr-namespace:WpfCustomUI.Controls;assembly=WpfCustomUI.Controls"
+             mc:Ignorable="d">
+    <DockPanel>
+        <TextBlock DockPanel.Dock="Top" Text="Ribbon"
+                   FontSize="20" FontWeight="SemiBold" Margin="0,0,0,4" />
+        <TextBlock DockPanel.Dock="Top"
+                   Foreground="{DynamicResource Wcu.Brush.Text.Secondary}"
+                   TextWrapping="Wrap" Margin="0,0,0,12"
+                   Text="WcuRibbon v1: タブ+ラベル付きグループ+大/小ボタン(Wcu.Ribbon.Button.* スタイル)+任意コントロールホスト+アプリケーションボタン+補助領域。タブ順をワークフロー順に並べることでユーザーフローを可視化する。" />
+
+        <!-- ミニ CAE を模したデモリボン(モデル→解析→結果のワークフロー順) -->
+        <wcu:WcuRibbon x:Name="DemoRibbon" DockPanel.Dock="Top" ApplicationLabel="ファイル">
+            <wcu:WcuRibbon.ApplicationMenu>
+                <ContextMenu>
+                    <MenuItem Header="新規(_N)" Click="OnAction" Tag="新規" />
+                    <MenuItem Header="開く(_O)..." Click="OnAction" Tag="開く" />
+                    <MenuItem Header="保存(_S)" Click="OnAction" Tag="保存" />
+                    <Separator />
+                    <MenuItem Header="設定(_T)..." Click="OnAction" Tag="設定" />
+                </ContextMenu>
+            </wcu:WcuRibbon.ApplicationMenu>
+            <wcu:WcuRibbon.AuxiliaryContent>
+                <Button Style="{StaticResource Wcu.Button.Icon}"
+                        wcu:ButtonAssist.Icon="{x:Static wcu:WcuIcons.Help}"
+                        ToolTip="ヘルプ" Click="OnAction" Tag="ヘルプ" />
+            </wcu:WcuRibbon.AuxiliaryContent>
+
+            <wcu:WcuRibbonTab Header="モデル">
+                <wcu:WcuRibbonGroup Header="テンプレート">
+                    <Button Style="{StaticResource Wcu.Ribbon.Button.Large}"
+                            wcu:ButtonAssist.Icon="{x:Static wcu:WcuIcons.NewFile}"
+                            Content="新規作成" Click="OnAction" Tag="新規作成" />
+                    <Button Style="{StaticResource Wcu.Ribbon.Button.Large}"
+                            wcu:ButtonAssist.Icon="{x:Static wcu:WcuIcons.FolderOpen}"
+                            Content="開く" Click="OnAction" Tag="開く" />
+                </wcu:WcuRibbonGroup>
+                <wcu:WcuRibbonGroup Header="メッシュ">
+                    <Button Style="{StaticResource Wcu.Ribbon.Button.Large}"
+                            wcu:ButtonAssist.Icon="{x:Static wcu:WcuIcons.Mesh}"
+                            Content="再生成" Click="OnAction" Tag="メッシュ再生成" />
+                    <StackPanel VerticalAlignment="Center">
+                        <Button Style="{StaticResource Wcu.Ribbon.Button.Small}"
+                                wcu:ButtonAssist.Icon="{x:Static wcu:WcuIcons.Add}"
+                                Content="細分化" Click="OnAction" Tag="細分化" />
+                        <Button Style="{StaticResource Wcu.Ribbon.Button.Small}"
+                                wcu:ButtonAssist.Icon="{x:Static wcu:WcuIcons.Remove}"
+                                Content="粗く" Click="OnAction" Tag="粗く" />
+                        <Button Style="{StaticResource Wcu.Ribbon.Button.Small}"
+                                wcu:ButtonAssist.Icon="{x:Static wcu:WcuIcons.Grid}"
+                                Content="品質チェック" Click="OnAction" Tag="品質チェック" />
+                    </StackPanel>
+                </wcu:WcuRibbonGroup>
+                <wcu:WcuRibbonGroup Header="材料">
+                    <ComboBox Width="140" SelectedIndex="0" VerticalAlignment="Center" Margin="4,0">
+                        <ComboBoxItem Content="Steel SS400" />
+                        <ComboBoxItem Content="Aluminum A5052" />
+                        <ComboBoxItem Content="Titanium Ti-6Al-4V" />
+                    </ComboBox>
+                </wcu:WcuRibbonGroup>
+            </wcu:WcuRibbonTab>
+
+            <wcu:WcuRibbonTab Header="解析">
+                <wcu:WcuRibbonGroup Header="実行">
+                    <wcu:SplitButton x:Name="RunSplit"
+                                     Style="{StaticResource Wcu.Ribbon.SplitButton.Large.Accent}"
+                                     wcu:ButtonAssist.Icon="{x:Static wcu:WcuIcons.Play}"
+                                     Content="解析実行" Click="OnAction" Tag="解析実行(ローカル)">
+                        <wcu:SplitButton.DropDownMenu>
+                            <ContextMenu>
+                                <MenuItem Header="ローカルで実行" Click="OnAction" Tag="ローカルで実行" />
+                                <MenuItem Header="ジョブとして投入..." Click="OnAction" Tag="ジョブとして投入" />
+                            </ContextMenu>
+                        </wcu:SplitButton.DropDownMenu>
+                    </wcu:SplitButton>
+                    <Button Style="{StaticResource Wcu.Ribbon.Button.Large}"
+                            wcu:ButtonAssist.Icon="{x:Static wcu:WcuIcons.Stop}"
+                            Content="中止" IsEnabled="False" />
+                </wcu:WcuRibbonGroup>
+                <wcu:WcuRibbonGroup Header="ジョブ">
+                    <Button Style="{StaticResource Wcu.Ribbon.Button.Large}"
+                            wcu:ButtonAssist.Icon="{x:Static wcu:WcuIcons.Server}"
+                            Content="ジョブモニタ" Click="OnAction" Tag="ジョブモニタ" />
+                </wcu:WcuRibbonGroup>
+            </wcu:WcuRibbonTab>
+
+            <wcu:WcuRibbonTab Header="結果">
+                <wcu:WcuRibbonGroup Header="コンター">
+                    <Button Style="{StaticResource Wcu.Ribbon.Button.Large}"
+                            wcu:ButtonAssist.Icon="{x:Static wcu:WcuIcons.Contour}"
+                            Content="応力" Click="OnAction" Tag="応力コンター" />
+                    <Button Style="{StaticResource Wcu.Ribbon.Button.Large}"
+                            wcu:ButtonAssist.Icon="{x:Static wcu:WcuIcons.Vector}"
+                            Content="変位" Click="OnAction" Tag="変位ベクトル" />
+                </wcu:WcuRibbonGroup>
+                <wcu:WcuRibbonGroup Header="計測">
+                    <ToggleButton Style="{StaticResource Wcu.Ribbon.Toggle.Large}"
+                                  wcu:ButtonAssist.Icon="{x:Static wcu:WcuIcons.Probe}"
+                                  Content="プローブ" Click="OnAction" Tag="プローブ" />
+                    <Button Style="{StaticResource Wcu.Ribbon.Button.Large}"
+                            wcu:ButtonAssist.Icon="{x:Static wcu:WcuIcons.Delete}"
+                            Content="注釈クリア" Click="OnAction" Tag="注釈クリア" />
+                </wcu:WcuRibbonGroup>
+            </wcu:WcuRibbonTab>
+
+            <wcu:WcuRibbonTab Header="表示">
+                <wcu:WcuRibbonGroup Header="オーバーレイ">
+                    <StackPanel VerticalAlignment="Center">
+                        <ToggleButton Style="{StaticResource Wcu.Ribbon.Toggle.Small}"
+                                      wcu:ButtonAssist.Icon="{x:Static wcu:WcuIcons.Grid}"
+                                      Content="エッジ" IsChecked="True" Click="OnAction" Tag="エッジ" />
+                        <ToggleButton Style="{StaticResource Wcu.Ribbon.Toggle.Small}"
+                                      wcu:ButtonAssist.Icon="{x:Static wcu:WcuIcons.Cube}"
+                                      Content="非変形形状" Click="OnAction" Tag="非変形形状" />
+                    </StackPanel>
+                </wcu:WcuRibbonGroup>
+                <wcu:WcuRibbonGroup Header="視点">
+                    <Button Style="{StaticResource Wcu.Ribbon.Button.Large}"
+                            wcu:ButtonAssist.Icon="{x:Static wcu:WcuIcons.ZoomToFit}"
+                            Content="フィット" Click="OnAction" Tag="フィット" />
+                    <Button Style="{StaticResource Wcu.Ribbon.Button.Large}"
+                            wcu:ButtonAssist.Icon="{x:Static wcu:WcuIcons.Camera}"
+                            Content="標準視点" Click="OnAction" Tag="標準視点" />
+                </wcu:WcuRibbonGroup>
+            </wcu:WcuRibbonTab>
+        </wcu:WcuRibbon>
+
+        <!-- クリックログ(動作確認用) -->
+        <Border Background="{DynamicResource Wcu.Brush.Surface.Window}" Padding="12">
+            <StackPanel>
+                <TextBlock Text="操作ログ" FontWeight="SemiBold" Margin="0,4,0,6" />
+                <TextBlock x:Name="ActionLog"
+                           Foreground="{DynamicResource Wcu.Brush.Text.Secondary}"
+                           FontFamily="{StaticResource Wcu.FontFamily.Monospace}"
+                           FontSize="{StaticResource Wcu.FontSize.S}"
+                           Text="(リボンのボタンをクリックするとここに記録されます)" />
+            </StackPanel>
+        </Border>
+    </DockPanel>
+</UserControl>

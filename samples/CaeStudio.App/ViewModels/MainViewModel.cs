@@ -23,15 +23,23 @@ public sealed class MainViewModel : IDisposable
     private readonly CompositeDisposable _disposables = new();
     private readonly ProjectStore _store;
     private readonly AnalysisRunner _runner;
+    private readonly IJobClient _jobs;
     private readonly IDialogService _dialogs;
     private readonly IProjectRepository _repository;
     private readonly ISettingsService _settings;
     private readonly Subject<ToastRequest> _toasts = new();
     private readonly SynchronizationContext _uiContext;
     private readonly Dictionary<TreeNode, string?> _nodeCategories = [];
+    private readonly HashSet<Guid> _announcedJobs = [];
 
     /// <summary>位相スイープ 1 周のフレーム数(PlaybackBar.FrameCount と一致)。</summary>
     public const int PhaseFrameCount = 60;
+
+    /// <summary>リボンのタブ位置(モデル/解析/結果/表示。ワークフロー順)。</summary>
+    public const int RibbonTabModel = 0;
+    public const int RibbonTabAnalysis = 1;
+    public const int RibbonTabResults = 2;
+    public const int RibbonTabView = 3;
 
     private ConvergenceSeries? _activeSeries;
     private CaeProjectData? _resultProject;
@@ -45,11 +53,12 @@ public sealed class MainViewModel : IDisposable
     private int _viewRequestSequence;
 
     public MainViewModel(
-        ProjectStore store, AnalysisRunner runner, IDialogService dialogs,
+        ProjectStore store, AnalysisRunner runner, IJobClient jobs, IDialogService dialogs,
         IProjectRepository repository, ISettingsService settings)
     {
         _store = store;
         _runner = runner;
+        _jobs = jobs;
         _dialogs = dialogs;
         _repository = repository;
         _settings = settings;
@@ -62,10 +71,10 @@ public sealed class MainViewModel : IDisposable
         IsLightTheme = Register(new BindableReactiveProperty<bool>(settings.Current.Theme == "Light"));
         RunGestureText = Register(new BindableReactiveProperty<string>(settings.Current.RunGesture));
 
-        // ---- タイトル: プロジェクト名+ダーティマーク ----
+        // ---- ドキュメント表示名(タイトルバーはアプリ名固定、文書名は TitleBar 内に別表示) ----
         Register(_store.Current
-            .CombineLatest(_store.IsDirty, (project, dirty) => $"{project.Name}{(dirty ? " *" : "")} - CaeStudio")
-            .Subscribe(this, static (title, self) => self.WindowTitle.Value = title));
+            .CombineLatest(_store.IsDirty, (project, dirty) => $"{project.Name}{(dirty ? " *" : "")}")
+            .Subscribe(this, static (title, self) => self.DocumentTitle.Value = title));
 
         // ---- テーマトグル(表示メニュー)→ 即適用+設定保存 ----
         Register(IsLightTheme.Skip(1).Subscribe(this, static (light, self) =>
@@ -95,6 +104,7 @@ public sealed class MainViewModel : IDisposable
             if (self._resultProject is not null && !ReferenceEquals(project, self._resultProject))
             {
                 self.IsResultStale.Value = true;
+                self.IsJobSnapshotMismatch.Value = true;
             }
 
             if (self._rootNode is not null)
@@ -204,6 +214,45 @@ public sealed class MainViewModel : IDisposable
         ClearAnnotationsCommand = Register(new ReactiveCommand());
         Register(ClearAnnotationsCommand.Subscribe(this, static (_, self) => self.AnnotationClearRequest.Value++));
 
+        // リボン「モデル」タブの編集ボタン → PropertyGrid のカテゴリ絞り込み
+        SelectCategoryCommand = Register(new ReactiveCommand<string>());
+        Register(SelectCategoryCommand.Subscribe(this, static (category, self) =>
+        {
+            self._categoryFilter = category;
+            self.RebuildPropertyItems();
+        }));
+
+        // 実行ボタンのビジー表示(spec 6.27.3: スピナー+「解析中…」)
+        Register(IsRunning.Subscribe(this, static (running, self) =>
+            self.RunButtonLabel.Value = running ? "解析中…" : "解析実行"));
+
+        // ---- ジョブ投入模擬(spec 6.27.4) ----
+        SubmitJobCommand = Register(IsRunning.Select(static running => !running).ToReactiveCommand());
+        Register(SubmitJobCommand.SubscribeAwait(
+            async (_, _) => await SubmitJobAsync(), AwaitOperation.Drop));
+
+        ShowJobsCommand = Register(new ReactiveCommand());
+        Register(ShowJobsCommand.Subscribe(this, static (_, self) =>
+        {
+            self.IsJobsVisible.Value = true;
+            self.RibbonTabIndex.Value = RibbonTabAnalysis;
+        }));
+
+        CancelJobCommand = Register(new ReactiveCommand<Guid>());
+        Register(CancelJobCommand.SubscribeAwait(
+            async (id, _) => await _jobs.CancelAsync(id), AwaitOperation.Parallel));
+
+        LoadJobResultCommand = Register(new ReactiveCommand<Guid>());
+        Register(LoadJobResultCommand.SubscribeAwait(
+            async (id, _) => await LoadJobResultAsync(id), AwaitOperation.Drop));
+
+        ResubmitJobCommand = Register(IsRunning.Select(static running => !running).ToReactiveCommand<Guid>());
+        Register(ResubmitJobCommand.SubscribeAwait(
+            async (id, _) => await ResubmitJobAsync(id), AwaitOperation.Drop));
+
+        Register(_jobs.Jobs.ObserveOn(_uiContext).Subscribe(this, static (list, self) =>
+            self.OnJobsChanged(list)));
+
         ProbeLabelFormatter = FormatProbeLabel;
 
         // ---- プローブトグル → ピックモード ----
@@ -252,7 +301,8 @@ public sealed class MainViewModel : IDisposable
     /// <summary>トースト通知要求(View の ToastBehavior が購読)。</summary>
     public Observable<ToastRequest> Toasts => _toasts;
 
-    public BindableReactiveProperty<string> WindowTitle { get; } = new("CaeStudio");
+    /// <summary>タイトルバー右側に出す文書名(アプリ名はウィンドウ Title 側で固定)。</summary>
+    public BindableReactiveProperty<string> DocumentTitle { get; } = new("CaeStudio");
 
     public BindableReactiveProperty<string> StatusText { get; } = new("準備完了");
 
@@ -350,6 +400,46 @@ public sealed class MainViewModel : IDisposable
     /// <summary>平面応力の弾性マトリクス D(MatrixBox 表示用、読み取り専用)。</summary>
     public BindableReactiveProperty<double[,]?> ElasticityMatrix { get; } = new(null);
 
+    // ---- Phase 27: フロー誘導+段階連動パネル(spec 6.27.3) ----
+
+    /// <summary>解析結果が存在するか(「結果」タブ/結果系コマンドの活性・エンプティステートガイド)。</summary>
+    public BindableReactiveProperty<bool> HasResult { get; } = new(false);
+
+    /// <summary>リボンの選択タブ。解析完了で「結果」へ自動切替(TwoWay)。</summary>
+    public BindableReactiveProperty<int> RibbonTabIndex { get; } = new(RibbonTabModel);
+
+    /// <summary>実行ボタンのラベル(実行中は「解析中…」)。</summary>
+    public BindableReactiveProperty<string> RunButtonLabel { get; } = new("解析実行");
+
+    /// <summary>段階連動パネルの表示状態(表示タブのトグルと TwoWay、View がドックへ反映)。</summary>
+    public BindableReactiveProperty<bool> IsConvergenceVisible { get; } = new(false);
+
+    public BindableReactiveProperty<bool> IsPathPlotVisible { get; } = new(false);
+
+    public BindableReactiveProperty<bool> IsHistogramVisible { get; } = new(false);
+
+    public BindableReactiveProperty<bool> IsFrfVisible { get; } = new(false);
+
+    public BindableReactiveProperty<bool> IsStudyVisible { get; } = new(false);
+
+    public BindableReactiveProperty<bool> IsModesVisible { get; } = new(false);
+
+    public BindableReactiveProperty<bool> IsMaterialVisible { get; } = new(false);
+
+    public BindableReactiveProperty<bool> IsLegendVisible { get; } = new(false);
+
+    /// <summary>ジョブモニタパネルの表示状態(初回投入で自動表示)。</summary>
+    public BindableReactiveProperty<bool> IsJobsVisible { get; } = new(false);
+
+    /// <summary>ジョブ結果のスナップショットが現行モデルと不一致か(InfoBar)。</summary>
+    public BindableReactiveProperty<bool> IsJobSnapshotMismatch { get; } = new(false);
+
+    /// <summary>ジョブ一覧(DataGrid)。</summary>
+    public ObservableCollection<JobRow> JobRows { get; } = [];
+
+    /// <summary>収束モニタをアクティブ化する要求カウンタ(解析開始時に増加、View が監視)。</summary>
+    public BindableReactiveProperty<int> ActivateConvergenceRequest { get; } = new(0);
+
     /// <summary>メッシュ細分化スタディの履歴(HistoryChart)。</summary>
     public ObservableCollection<ChartSeries> StudySeries { get; } = [];
 
@@ -392,6 +482,24 @@ public sealed class MainViewModel : IDisposable
 
     public ReactiveCommand<Unit> StudyCommand { get; }
 
+    /// <summary>リボン「モデル」タブ: PropertyGrid のカテゴリ絞り込み(パラメータはカテゴリ名)。</summary>
+    public ReactiveCommand<string> SelectCategoryCommand { get; }
+
+    /// <summary>ジョブとして投入(外部 HPC 模擬)。</summary>
+    public ReactiveCommand<Unit> SubmitJobCommand { get; }
+
+    /// <summary>ジョブモニタパネルを表示。</summary>
+    public ReactiveCommand<Unit> ShowJobsCommand { get; }
+
+    /// <summary>ジョブのキャンセル(パラメータ=ジョブ ID)。</summary>
+    public ReactiveCommand<Guid> CancelJobCommand { get; }
+
+    /// <summary>完了ジョブの結果をビューポートへ読込。</summary>
+    public ReactiveCommand<Guid> LoadJobResultCommand { get; }
+
+    /// <summary>同じスナップショットで再投入。</summary>
+    public ReactiveCommand<Guid> ResubmitJobCommand { get; }
+
     private const string DisplayOptionEdges = "メッシュエッジ";
     private const string DisplayOptionUndeformed = "非変形ワイヤフレーム";
 
@@ -425,7 +533,113 @@ public sealed class MainViewModel : IDisposable
         ProgressText.Value = "";
         Log.Append(LogLevel.Info, $"{kind}解析を開始: {project.Name}({DescribeMesh(project)})");
 
+        // 段階連動: 解析中は収束モニタを自動表示+アクティブ化(spec 6.27.3)
+        IsConvergenceVisible.Value = true;
+        ActivateConvergenceRequest.Value++;
+
         await _runner.RunAsync(project);
+    }
+
+    private async Task SubmitJobAsync()
+    {
+        var project = _store.Current.CurrentValue;
+        var id = await _jobs.SubmitAsync(project);
+        IsJobsVisible.Value = true;
+        RibbonTabIndex.Value = RibbonTabAnalysis;
+        Log.Append(LogLevel.Info, $"ジョブを投入しました: {project.Name}({id:N})");
+        _toasts.OnNext(new ToastRequest("ジョブをキューに投入しました", ToastLevel.Info));
+        StatusText.Value = "ジョブ投入済み(ジョブモニタで進捗を確認)";
+    }
+
+    private void OnJobsChanged(IReadOnlyList<JobInfo> jobs)
+    {
+        // DataGrid 行を ID 順で同期(進捗更新のたびに全置換)
+        JobRows.Clear();
+        foreach (var job in jobs)
+        {
+            JobRows.Add(JobRow.From(job));
+
+            if (_announcedJobs.Contains(job.Id))
+            {
+                continue;
+            }
+
+            if (job.State is JobState.Completed or JobState.Failed or JobState.Cancelled)
+            {
+                _announcedJobs.Add(job.Id);
+                AnnounceJobTerminal(job);
+            }
+        }
+    }
+
+    private void AnnounceJobTerminal(JobInfo job)
+    {
+        switch (job.State)
+        {
+            case JobState.Completed:
+                Log.Append(LogLevel.Info, $"ジョブ完了: {job.Name}");
+                _toasts.OnNext(new ToastRequest(
+                    $"ジョブ完了: {job.Name}(モニタから結果を読込)", ToastLevel.Success));
+                StatusText.Value = $"ジョブ完了: {job.Name}";
+                break;
+            case JobState.Failed:
+                Log.Append(LogLevel.Error, $"ジョブ失敗: {job.Name} — {job.ErrorMessage}");
+                _toasts.OnNext(new ToastRequest($"ジョブ失敗: {job.ErrorMessage}", ToastLevel.Error));
+                break;
+            case JobState.Cancelled:
+                Log.Append(LogLevel.Warning, $"ジョブキャンセル: {job.Name}");
+                _toasts.OnNext(new ToastRequest($"ジョブをキャンセルしました: {job.Name}", ToastLevel.Warning));
+                break;
+        }
+    }
+
+    private async Task LoadJobResultAsync(Guid jobId)
+    {
+        var result = await _jobs.TryGetResultAsync(jobId);
+        if (result is null)
+        {
+            _toasts.OnNext(new ToastRequest("結果を取得できません(未完了または失敗)", ToastLevel.Warning));
+            return;
+        }
+
+        _resultProject = result.Snapshot;
+        IsJobSnapshotMismatch.Value = !ReferenceEquals(_store.Current.CurrentValue, result.Snapshot);
+        IsResultStale.Value = IsJobSnapshotMismatch.Value;
+
+        if (result.ModalResult is { } modal)
+        {
+            ApplyModalResult(modal);
+        }
+        else if (result.StaticResult is { } staticResult)
+        {
+            ApplyStaticResult(staticResult);
+        }
+        else
+        {
+            _toasts.OnNext(new ToastRequest("ジョブ結果が空です", ToastLevel.Warning));
+            return;
+        }
+
+        HasResult.Value = true;
+        IsLegendVisible.Value = true;
+        GoToResultsTab();
+        Log.Append(LogLevel.Info, $"ジョブ結果を読込: {result.Snapshot.Name}");
+        _toasts.OnNext(new ToastRequest("ジョブ結果を表示しました", ToastLevel.Success));
+    }
+
+    private async Task ResubmitJobAsync(Guid jobId)
+    {
+        var job = _jobs.Jobs.CurrentValue.FirstOrDefault(j => j.Id == jobId);
+        if (job is null)
+        {
+            return;
+        }
+
+        // 元スナップショットを再投入(現行モデルではなく投入時入力を再現)
+        var id = await _jobs.SubmitAsync(job.Snapshot);
+        IsJobsVisible.Value = true;
+        Log.Append(LogLevel.Info, $"ジョブを再投入: {job.Name} → {id:N}");
+        _toasts.OnNext(new ToastRequest("ジョブを再投入しました", ToastLevel.Info));
     }
 
     private void OnAnalysisStateChanged(AnalysisState state)
@@ -477,8 +691,20 @@ public sealed class MainViewModel : IDisposable
             ApplyStaticResult(result);
         }
 
+        // フロー誘導: 結果系を活性化し「結果」タブへ自動切替(spec 6.27.3)
+        HasResult.Value = true;
+        IsLegendVisible.Value = true;
+        GoToResultsTab();
+
         _toasts.OnNext(new ToastRequest("解析が完了しました", ToastLevel.Success));
     }
+
+    /// <summary>
+    /// 結果タブへ切替。HasResult で IsEnabled が立つ前に SelectedIndex を書くと
+    /// 無効タブへの切替が握りつぶされることがあるため、UI キューへ遅延する。
+    /// </summary>
+    private void GoToResultsTab() =>
+        _uiContext.Post(_ => RibbonTabIndex.Value = RibbonTabResults, null);
 
     private void ApplyStaticResult(StaticResult result)
     {
@@ -505,6 +731,12 @@ public sealed class MainViewModel : IDisposable
         PathPlot.Value = _resultProject is not null
             ? PostProcessing.CreateKirschPath(_resultProject, result) : null;
         HistogramValues.Value = result.NodalVonMises;
+
+        // 段階連動: 静解析の成果があるパネルだけ自動表示(spec 6.27.3)
+        IsPathPlotVisible.Value = PathPlot.Value is not null;
+        IsHistogramVisible.Value = true;
+        IsFrfVisible.Value = false;
+        IsModesVisible.Value = false;
 
         StatusText.Value = string.Create(CultureInfo.InvariantCulture,
             $"解析完了({result.Iterations:N0} 反復, {result.SolveTime.TotalSeconds:0.00} s)");
@@ -560,6 +792,12 @@ public sealed class MainViewModel : IDisposable
         {
             FrfSeries.Add(PostProcessing.CreateFrf(result));
         }
+
+        // 段階連動: 固有値解析の成果があるパネルだけ自動表示(spec 6.27.3)
+        IsPathPlotVisible.Value = false;
+        IsHistogramVisible.Value = false;
+        IsFrfVisible.Value = FrfSeries.Count > 0;
+        IsModesVisible.Value = true;
 
         MeshStatsText.Value = DescribeMeshCounts(result.Mesh);
 
@@ -721,6 +959,7 @@ public sealed class MainViewModel : IDisposable
         var metricLabel = RefinementStudy.MetricLabel(project.AnalysisType);
 
         IsStudyRunning.Value = true;
+        IsStudyVisible.Value = true;
         StudyStatusText.Value = "スタディ実行中...";
         Log.Append(LogLevel.Info, $"メッシュ細分化スタディを開始: {project.Name}({metricLabel})");
 
@@ -884,6 +1123,18 @@ public sealed class MainViewModel : IDisposable
         AnnotationClearRequest.Value++;
         _pendingFit = true;
         _categoryFilter = null;
+
+        // フロー誘導: 新規/読込直後は結果なし → 「モデル」タブへ戻し結果系パネルを隠す
+        HasResult.Value = false;
+        RibbonTabIndex.Value = RibbonTabModel;
+        IsConvergenceVisible.Value = false;
+        IsPathPlotVisible.Value = false;
+        IsHistogramVisible.Value = false;
+        IsFrfVisible.Value = false;
+        IsModesVisible.Value = false;
+        IsLegendVisible.Value = false;
+        IsJobSnapshotMismatch.Value = false;
+
         _store.Replace(project, filePath);
     }
 
@@ -1064,3 +1315,39 @@ public sealed class MainViewModel : IDisposable
 /// <summary>固有振動数テーブルの 1 行(理論値は片持ち板のみ、他は "-")。</summary>
 public sealed record ModeRow(
     int Index, ModalMode Mode, string FrequencyText, string TheoryText, string ErrorText);
+
+/// <summary>ジョブモニタ DataGrid の 1 行(IJobClient の JobInfo を表示用に整形)。</summary>
+public sealed record JobRow(
+    Guid Id,
+    string Name,
+    string AnalysisTypeText,
+    string StateText,
+    double Progress,
+    string ElapsedText,
+    string? ErrorMessage,
+    bool CanCancel,
+    bool CanLoadResult,
+    bool CanResubmit)
+{
+    public static JobRow From(JobInfo job) => new(
+        job.Id,
+        job.Name,
+        job.AnalysisType == AnalysisType.Modal ? "固有値" : "静解析",
+        job.State switch
+        {
+            JobState.Queued => "待機中",
+            JobState.Running => "実行中",
+            JobState.Completed => "完了",
+            JobState.Cancelled => "キャンセル",
+            JobState.Failed => "失敗",
+            _ => job.State.ToString(),
+        },
+        job.Progress,
+        job.Elapsed.TotalSeconds < 60
+            ? string.Create(CultureInfo.InvariantCulture, $"{job.Elapsed.TotalSeconds:0.0} s")
+            : string.Create(CultureInfo.InvariantCulture, $"{job.Elapsed.TotalMinutes:0.0} min"),
+        job.ErrorMessage,
+        CanCancel: job.State is JobState.Queued or JobState.Running,
+        CanLoadResult: job.State == JobState.Completed,
+        CanResubmit: job.State is JobState.Completed or JobState.Failed or JobState.Cancelled);
+}

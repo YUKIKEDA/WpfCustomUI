@@ -89,7 +89,14 @@ function Find-ByNameAndType($scope, $name, $controlType) {
 }
 
 function Invoke-Button($element) {
-    $element.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    if ($null -eq $element) { throw 'Invoke-Button: element is null' }
+    if ($element -is [System.Array]) { $element = @($element)[0] }
+    try {
+        $element.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    } catch {
+        $rect = $element.Current.BoundingRectangle
+        Left-Click ([int]($rect.X + $rect.Width / 2)) ([int]($rect.Y + $rect.Height / 2))
+    }
 }
 
 function Select-Item($element) {
@@ -134,6 +141,36 @@ function Activate-DockTab($scope, $name, $preferX = $null, $preferY = $null) {
     }
     Start-Sleep -Milliseconds 600
     return $tab
+}
+
+# リボン上部タブ(Y < 120)を名前で選択する
+function Select-RibbonTab($scope, $name) {
+    $tabCond = New-Object System.Windows.Automation.AndCondition @(
+        (New-Object System.Windows.Automation.PropertyCondition(
+            [System.Windows.Automation.AutomationElement]::NameProperty, $name)),
+        (New-Object System.Windows.Automation.PropertyCondition(
+            [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+            [System.Windows.Automation.ControlType]::TabItem)))
+    $tab = $null
+    foreach ($candidate in $scope.FindAll([System.Windows.Automation.TreeScope]::Descendants, $tabCond)) {
+        if ($candidate.Current.BoundingRectangle.Y -lt 120) { $tab = $candidate; break }
+    }
+    Assert-True ($null -ne $tab) "リボontab: $name"
+    Select-Item $tab
+    Start-Sleep -Milliseconds 700
+    return $tab
+}
+
+# モデルタブを開いてリボン上のコマンドボタンを返す(アプリメニューは UIA 非公開のため)
+# 指定リボontabを開いてコマンドボタンを返す
+function Invoke-RibbonCommand($scope, $automationId, $tabName = $null) {
+    if ($null -eq $tabName) {
+        $tabName = [string][char]0x30E2 + [char]0x30C7 + [char]0x30EB  # 'モデル'
+    }
+    $null = Select-RibbonTab $scope $tabName
+    $btn = Find-ById $scope $automationId
+    Assert-True ($null -ne $btn) "リボンコマンド: $automationId"
+    return $btn
 }
 
 function Set-FileDialogPath($scope, $dialogTitle, $filePath) {
@@ -264,7 +301,10 @@ try {
 
     Capture-Region 0 0 1400 900 (Join-Path $outDir 'caestudio-preview.png')
 
-    # ---- 解析実行 → 完了 ----
+    # ---- 解析タブへ切替 → 解析実行 → 完了 ----
+    $analysisName = [string][char]0x89E3 + [string][char]0x6790  # '解析'
+    Select-RibbonTab $main $analysisName
+
     $runButton = Find-ById $main 'RunButton'
     Assert-True ($null -ne $runButton) '解析実行ボタンを取得'
     Invoke-Button $runButton
@@ -285,6 +325,8 @@ try {
     Assert-True ($diff -gt 30000) "コンター描画のピクセル差分: $diff"
 
     # ---- ウィザード: 片持ち板を新規作成 ----
+    $modelName = [string][char]0x30E2 + [char]0x30C7 + [char]0x30EB  # 'モデル'
+    Select-RibbonTab $main $modelName
     $newButton = Find-ById $main 'NewProjectButton'
     Invoke-Button $newButton
     Start-Sleep -Milliseconds 1200
@@ -324,6 +366,10 @@ try {
         [System.Windows.Automation.AutomationElement]::NameProperty) -match '節点 729' } 20 '片持ち板メッシュ統計'
 
     # ---- M2: 固有値解析 → モードテーブル ----
+    # 新規作成後はモデルタブに戻るため、解析タブへ再切替
+    Select-RibbonTab $main $analysisName
+    $runButton = Find-ById $main 'RunButton'
+    Assert-True ($null -ne $runButton) '解析実行ボタン(再取得)'
     Invoke-Button $runButton
     Wait-Until { $status.GetCurrentPropertyValue(
         [System.Windows.Automation.AutomationElement]::NameProperty) -match '固有値解析完了' } 120 '固有値解析の完了'
@@ -424,7 +470,13 @@ try {
     Assert-True ($phaseDiff -gt 5000) "位相スイープのピクセル差分: $phaseDiff"
 
     # ---- M2: プローブ → 注釈ラベル+ログ ----
+    # 完了後は結果タブへ自動切替済み。プローブは結果タブにある
     $probeToggle = Find-ById $main 'ProbeToggle'
+    if ($null -eq $probeToggle) {
+        $resultsName = [string][char]0x7D50 + [string][char]0x679C  # '結果'
+        Select-RibbonTab $main $resultsName
+        $probeToggle = Find-ById $main 'ProbeToggle'
+    }
     Assert-True ($null -ne $probeToggle) 'プローブトグルを取得'
     Toggle-On $probeToggle
     Start-Sleep -Milliseconds 400
@@ -459,76 +511,77 @@ try {
 
     # ================= M3: 永続化・設定・網羅コントロール =================
 
-    # ---- 表示項目(CheckComboBox)・ツリー検索(SearchBox)の存在 ----
+    # ---- 表示タブ: 表示項目(CheckComboBox)・低頻度パネルを開く ----
+    $viewName = [string][char]0x8868 + [string][char]0x793A  # '表示'
+    Select-RibbonTab $main $viewName
     $displayOptions = Find-ById $main 'DisplayOptions'
     Assert-True ($null -ne $displayOptions) '表示項目 CheckComboBox を取得'
     $treeSearch = Find-ById $main 'TreeSearch'
     Assert-True ($null -ne $treeSearch) 'ツリー検索 SearchBox を取得'
 
+    # 材料剛性・スタディは既定非表示 → 表示タブのトグルで開く
+    $materialToggle = $null
+    $materialLabel = [string][char]0x6750 + [char]0x6599 + [char]0x525B + [char]0x6027  # '材料剛性'
+    $nameCond = New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::NameProperty, $materialLabel)
+    foreach ($c in $main.FindAll([System.Windows.Automation.TreeScope]::Descendants, $nameCond)) {
+        if ($c.Current.BoundingRectangle.Y -lt 160) { $materialToggle = $c; break }
+    }
+    if ($null -ne $materialToggle) {
+        try { Toggle-On $materialToggle } catch {
+            $r = $materialToggle.Current.BoundingRectangle
+            Left-Click ([int]($r.X + $r.Width / 2)) ([int]($r.Y + $r.Height / 2))
+        }
+        Start-Sleep -Milliseconds 600
+    }
+
     # ---- 材料剛性タブ(MatrixBox) ----
-    $materialTab = Activate-DockTab $main '材料剛性' 1000
+    $materialTab = Activate-DockTab $main $materialLabel 1000
     Assert-True ($null -ne $materialTab) '材料剛性タブを取得'
     $matrix = Find-ById $main 'ElasticityMatrix'
     Assert-True ($null -ne $matrix) '弾性マトリクス MatrixBox を取得'
 
     # ---- スタディタブ(HistoryChart) ----
-    $studyTab = Activate-DockTab $main 'スタディ' $null 500
+    $studyLabel = [string][char]0x30B9 + [char]0x30BF + [char]0x30C7 + [char]0x30A3  # 'スタディ'
+    $studyToggle = $null
+    $studyNameCond = New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::NameProperty, $studyLabel)
+    foreach ($c in $main.FindAll([System.Windows.Automation.TreeScope]::Descendants, $studyNameCond)) {
+        if ($c.Current.BoundingRectangle.Y -lt 160) { $studyToggle = $c; break }
+    }
+    if ($null -ne $studyToggle) {
+        try { Toggle-On $studyToggle } catch {
+            $r = $studyToggle.Current.BoundingRectangle
+            Left-Click ([int]($r.X + $r.Width / 2)) ([int]($r.Y + $r.Height / 2))
+        }
+        Start-Sleep -Milliseconds 600
+    }
+    $studyTab = Activate-DockTab $main $studyLabel $null 500
     Assert-True ($null -ne $studyTab) 'スタディタブを取得'
     $studyButton = Find-ById $main 'StudyButton'
     Assert-True ($null -ne $studyButton) 'スタディ実行ボタンを取得'
 
-    # ---- テーマ切替(表示メニュー) ----
-    # WPF のアクセスキー "_" は UIA Name から除去される(表示(_V) → 表示(V))
-    $viewMenu = Find-ByNameAndType $main '表示(V)' ([System.Windows.Automation.ControlType]::MenuItem)
-    Assert-True ($null -ne $viewMenu) '表示メニューを取得'
-    try {
-        $viewMenu.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
-    } catch {
-        $rect = $viewMenu.Current.BoundingRectangle
-        Left-Click ([int]($rect.X + $rect.Width / 2)) ([int]($rect.Y + $rect.Height / 2))
-    }
-    Start-Sleep -Milliseconds 400
-    $themeItem = Find-ById $main 'ThemeMenuItem'
-    Assert-True ($null -ne $themeItem) 'ライトテーマメニュー項目を取得'
-    Toggle-On $themeItem
-    Start-Sleep -Milliseconds 1000
-    Capture-Region 0 0 1400 900 (Join-Path $outDir 'caestudio-light.png')
-
-    # ---- 設定ダイアログ ----
-    $fileMenu = Find-ByNameAndType $main 'ファイル(F)' ([System.Windows.Automation.ControlType]::MenuItem)
-    Assert-True ($null -ne $fileMenu) 'ファイルメニューを取得'
-    try {
-        $fileMenu.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
-    } catch {
-        $rect = $fileMenu.Current.BoundingRectangle
-        Left-Click ([int]($rect.X + $rect.Width / 2)) ([int]($rect.Y + $rect.Height / 2))
-    }
-    Start-Sleep -Milliseconds 400
-    $settingsItem = Find-ById $main 'SettingsMenuItem'
-    Assert-True ($null -ne $settingsItem) '設定メニュー項目を取得'
+    # ---- テーマ切替(設定ダイアログのトグル) ----
+    $viewNameForSettings = [string][char]0x8868 + [string][char]0x793A  # '表示'
+    $settingsItem = Invoke-RibbonCommand $main 'SettingsButton' $viewNameForSettings
     Invoke-Button $settingsItem
-    Start-Sleep -Milliseconds 800
+    Start-Sleep -Milliseconds 1200
 
     $settings = Find-ByNameAndType $main '設定' ([System.Windows.Automation.ControlType]::Window)
     Assert-True ($null -ne $settings) '設定ダイアログが表示'
     Assert-True ($null -ne (Find-ById $settings 'SettingsLightTheme')) '設定: テーマトグル'
     Assert-True ($null -ne (Find-ById $settings 'SettingsDefaultDir')) '設定: PathBox'
     Assert-True ($null -ne (Find-ById $settings 'SettingsRunGesture')) '設定: KeyGestureBox'
+    Toggle-On (Find-ById $settings 'SettingsLightTheme')
+    Start-Sleep -Milliseconds 400
     Invoke-Button (Find-ById $settings 'SettingsOk')
-    Start-Sleep -Milliseconds 600
+    Start-Sleep -Milliseconds 1000
+    Capture-Region 0 0 1400 900 (Join-Path $outDir 'caestudio-light.png')
 
     # ---- 名前を付けて保存 → 開く 往復 ----
     $projectPath = Join-Path $env:TEMP ("caestudio-uia-" + [Guid]::NewGuid().ToString('N') + '.wcuproj')
     try {
-        try {
-            $fileMenu.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
-        } catch {
-            $rect = $fileMenu.Current.BoundingRectangle
-            Left-Click ([int]($rect.X + $rect.Width / 2)) ([int]($rect.Y + $rect.Height / 2))
-        }
-        Start-Sleep -Milliseconds 400
-        $saveAsItem = Find-ById $main 'SaveAsMenuItem'
-        Assert-True ($null -ne $saveAsItem) '名前を付けて保存メニューを取得'
+        $saveAsItem = Invoke-RibbonCommand $main 'SaveAsButton'
         Invoke-Button $saveAsItem
         Set-FileDialogPath $main 'プロジェクトを保存' $projectPath
         Assert-True (Test-Path $projectPath) "プロジェクトファイルが保存された: $projectPath"
@@ -537,6 +590,7 @@ try {
         Assert-True ($savedJson -match '"AnalysisType"\s*:\s*"Modal"') '保存 JSON に固有値解析'
 
         # いったん円孔平板の新規プロジェクトへ切替(保存済みとメッシュ統計が変わること)
+        $newButton = Invoke-RibbonCommand $main 'NewProjectButton'
         Invoke-Button $newButton
         Start-Sleep -Milliseconds 1200
         $discard = Find-ByNameAndType $main '確認' ([System.Windows.Automation.ControlType]::Window)
@@ -563,15 +617,7 @@ try {
         Assert-True ($plateStats -match '節点') "切替後メッシュ統計: $plateStats"
 
         # 保存済み片持ち板を開き直す
-        try {
-            $fileMenu.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
-        } catch {
-            $rect = $fileMenu.Current.BoundingRectangle
-            Left-Click ([int]($rect.X + $rect.Width / 2)) ([int]($rect.Y + $rect.Height / 2))
-        }
-        Start-Sleep -Milliseconds 400
-        $openItem = Find-ById $main 'OpenMenuItem'
-        Assert-True ($null -ne $openItem) '開くメニューを取得'
+        $openItem = Invoke-RibbonCommand $main 'OpenButton'
         Invoke-Button $openItem
         Set-FileDialogPath $main 'プロジェクトを開く' $projectPath
 

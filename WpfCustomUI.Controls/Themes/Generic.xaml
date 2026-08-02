@@ -32,5 +32,7 @@
         <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/ProgressRing.xaml" />
         <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/ToggleSwitch.xaml" />
         <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/InfoBar.xaml" />
+        <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/Icon.xaml" />
+        <ResourceDictionary Source="pack://application:,,,/WpfCustomUI.Controls;component/Themes/Controls/Ribbon.xaml" />
     </ResourceDictionary.MergedDictionaries>
 </ResourceDictionary>
