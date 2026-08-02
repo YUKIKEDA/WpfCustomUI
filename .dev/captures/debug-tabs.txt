@@ -1,0 +1,13 @@
+﻿==== initial (static selected) ====
+  [ControlType.Text] '静解析: 円孔付き平板: 三角形 4,800 / 構築 13 ms' rect=(199,941,234,15) off=False
+  [ControlType.Text] '静解析: 円孔付き平板' rect=(33,90,111,16) off=False
+  [ControlType.Text] '過渡応答: 片持ち梁' rect=(33,150,99,16) off=False
+  [ControlType.Text] '静解析: 円孔付き平板' rect=(278,65,111,16) off=False
+  [ControlType.Text] '過渡応答: 片持ち梁' rect=(419,64,99,16) off=False
+==== after switch (transient selected) ====
+  [ControlType.Text] '過渡応答: 片持ち梁: 三角形 2,000 / 構築 2 ms' rect=(199,941,217,15) off=False
+  [ControlType.Text] '静解析: 円孔付き平板' rect=(33,90,111,16) off=False
+  [ControlType.Text] '過渡応答: 片持ち梁' rect=(33,150,99,16) off=False
+  [ControlType.Text] '静解析: 円孔付き平板' rect=(279,64,111,16) off=False
+  [ControlType.Text] '過渡応答: 片持ち梁' rect=(420,65,99,16) off=False
+done
