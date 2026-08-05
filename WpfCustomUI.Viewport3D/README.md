@@ -118,4 +118,4 @@ flowchart LR
 
 - [WpfCustomUI.Controls](../WpfCustomUI.Controls/)
 - [WpfCustomUI.Gallery](../WpfCustomUI.Gallery/)
-- [samples/CaeStudio.App](../samples/CaeStudio.App/)
+- [samples/CaeStudio/CaeStudio.App](../samples/CaeStudio/CaeStudio.App/)

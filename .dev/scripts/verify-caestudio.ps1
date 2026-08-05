@@ -278,7 +278,7 @@ function Assert-True($condition, $message) {
 
 # ================= 起動 =================
 
-$exe = Join-Path $root 'samples\CaeStudio.App\bin\Debug\net10.0-windows\CaeStudio.exe'
+$exe = Join-Path $root 'samples\CaeStudio\CaeStudio.App\bin\Debug\net10.0-windows\CaeStudio.exe'
 $process = Start-Process -FilePath $exe -PassThru
 try {
     Wait-Until { $process.Refresh(); $process.MainWindowHandle -ne [IntPtr]::Zero } 30 'メインウィンドウ'

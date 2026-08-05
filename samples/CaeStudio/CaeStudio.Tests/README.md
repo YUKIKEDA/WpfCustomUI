@@ -21,5 +21,5 @@ CaeStudio 各層の **xUnit** テストです。
 ## 実行
 
 ```bash
-dotnet test samples/CaeStudio.Tests/CaeStudio.Tests.csproj -c Debug
+dotnet test samples/CaeStudio/CaeStudio.Tests/CaeStudio.Tests.csproj -c Debug
 ```

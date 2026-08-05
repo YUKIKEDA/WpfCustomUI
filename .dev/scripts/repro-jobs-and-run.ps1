@@ -24,7 +24,7 @@ function Select-RibbonTab($s, $name) {
     return $false
 }
 
-$exe = 'd:\home\Programs\CSharpProjects\WpfCustomUI\samples\CaeStudio.App\bin\Debug\net10.0-windows\CaeStudio.exe'
+$exe = 'd:\home\Programs\CSharpProjects\WpfCustomUI\samples\CaeStudio\CaeStudio.App\bin\Debug\net10.0-windows\CaeStudio.exe'
 $p = Start-Process $exe -PassThru
 try {
     $deadline = (Get-Date).AddSeconds(40)

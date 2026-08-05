@@ -7,10 +7,12 @@
   <Project Path="WpfCustomUI.Viewport3D/WpfCustomUI.Viewport3D.csproj" />
   <Project Path="WpfCustomUI.Viewport3D.Tests/WpfCustomUI.Viewport3D.Tests.csproj" />
   <Folder Name="/samples/">
-    <Project Path="samples/CaeStudio.Domain/CaeStudio.Domain.csproj" />
-    <Project Path="samples/CaeStudio.Application/CaeStudio.Application.csproj" />
-    <Project Path="samples/CaeStudio.Infrastructure/CaeStudio.Infrastructure.csproj" />
-    <Project Path="samples/CaeStudio.App/CaeStudio.App.csproj" />
-    <Project Path="samples/CaeStudio.Tests/CaeStudio.Tests.csproj" />
+    <Folder Name="/samples/CaeStudio/">
+      <Project Path="samples/CaeStudio/CaeStudio.Domain/CaeStudio.Domain.csproj" />
+      <Project Path="samples/CaeStudio/CaeStudio.Application/CaeStudio.Application.csproj" />
+      <Project Path="samples/CaeStudio/CaeStudio.Infrastructure/CaeStudio.Infrastructure.csproj" />
+      <Project Path="samples/CaeStudio/CaeStudio.App/CaeStudio.App.csproj" />
+      <Project Path="samples/CaeStudio/CaeStudio.Tests/CaeStudio.Tests.csproj" />
+    </Folder>
   </Folder>
 </Solution>

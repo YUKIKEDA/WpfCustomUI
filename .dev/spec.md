@@ -1070,12 +1070,12 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 
 ### 6.26.2 配置・命名・レイヤー構成
 
-- 同一リポジトリ・同一ソリューション、`samples/` を一階層切って配置:
-  - `samples/CaeStudio.Domain` — メッシュ/材料/境界条件/解析結果モデル+**FEM ソルバ純粋ロジック**(要素剛性・CG・逆反復)。依存ゼロ(WPF なし)
-  - `samples/CaeStudio.Application` — ユースケース(解析実行/プロジェクト管理)、**R3 ストリーム公開**(残差・進捗・状態)、永続化インターフェース
-  - `samples/CaeStudio.Infrastructure` — プロジェクトファイル JSON 永続化・ユーザ設定
-  - `samples/CaeStudio.App` — WPF(Views / ViewModels / Behaviors / DI コンポジションルート)。WpfCustomUI.* を参照
-  - `samples/CaeStudio.Tests` — xUnit(ソルバ厳密解検証 / Application / ViewModel)
+- 同一リポジトリ・同一ソリューション、`samples/CaeStudio/` を一階層切って配置:
+  - `samples/CaeStudio/CaeStudio.Domain` — メッシュ/材料/境界条件/解析結果モデル+**FEM ソルバ純粋ロジック**(要素剛性・CG・逆反復)。依存ゼロ(WPF なし)
+  - `samples/CaeStudio/CaeStudio.Application` — ユースケース(解析実行/プロジェクト管理)、**R3 ストリーム公開**(残差・進捗・状態)、永続化インターフェース
+  - `samples/CaeStudio/CaeStudio.Infrastructure` — プロジェクトファイル JSON 永続化・ユーザ設定
+  - `samples/CaeStudio/CaeStudio.App` — WPF(Views / ViewModels / Behaviors / DI コンポジションルート)。WpfCustomUI.* を参照
+  - `samples/CaeStudio/CaeStudio.Tests` — xUnit(ソルバ厳密解検証 / Application / ViewModel)
 - ViewModel は App 内フォルダ分離+コードビハインド禁止規約(独立アセンブリ化はしない)
 - 名前は独立製品名風「CaeStudio」(利用者がライブラリを参照する構図の再現。参照方向が名前空間で自明)
 
@@ -1225,5 +1225,5 @@ WPF 製デスクトップ CAE アプリケーション向け UI コンポーネ�
 | **Phase 23 — ビューポート第8弾(スケール第2弾: 1〜2億)** | 法線 octahedral 16bit 圧縮(28B→20B) / 構築中間ストリーミング化 / 操作中 LOD(グリッドクラスタリング約 1/20、変形・振動アニメ対応) / チャンク AABB フラスタムカリング / InteractiveLodThreshold DP(既定 500万) / 統計拡張 / Benchmark ページ拡張(1億/2億+LOD トグル)                                             | ✅ 完了 (2026-08-01) |
 | **Phase 24 — ビューポート第9弾(操作性仕上げ)**          | 常時非同期ジオメトリ構築(世代管理+旧シーン表示+IsGeometryBuilding DP+進捗/完了イベント) / ホバープリハイライト(静止時 ID キャッシュ方式、既定 ON、Probe 節点プレビュー) / 貫通選択(RubberBandSelectionMode DP、CPU 並列錐台判定) / Benchmark・Picking ページ拡張                                               | ✅ 完了 (2026-08-01) |
 | **Phase 25 — 統合ミニ CAE シェル**                      | DockingShellWindow の疑似ビューポートを実 WcuViewport 化(静解析 Kirsch+過渡片持ち梁の 2 ドキュメント) / ModelTree 双方向選択同期+可視性 / PropertyGrid 選択連動 / プローブ→LogConsole / ColorScaleEditor+凡例共有 / PlaybackBar / UIA シェル検証新設                                                           | ✅ 完了              |
-| **Phase 26 — CaeStudio(MVVM サンプル CAE アプリ)**      | `samples/CaeStudio.*` 5 プロジェクト(Domain/Application/Infrastructure/App/Tests)。R3+ObservableCollections+Generic Host の完全 MVVM+レイヤード / 2D 平面応力 FEM(静解析 CG+固有値 逆反復、Kirsch・Euler-Bernoulli 厳密解検証) / 全コントロール網羅 / JSON 永続化 / ライブラリ MVVM 対応還元 / UIA 新設+全回帰 | ✅ 完了 (2026-08-02) |
+| **Phase 26 — CaeStudio(MVVM サンプル CAE アプリ)**      | `samples/CaeStudio/CaeStudio.*` 5 プロジェクト(Domain/Application/Infrastructure/App/Tests)。R3+ObservableCollections+Generic Host の完全 MVVM+レイヤード / 2D 平面応力 FEM(静解析 CG+固有値 逆反復、Kirsch・Euler-Bernoulli 厳密解検証) / 全コントロール網羅 / JSON 永続化 / ライブラリ MVVM 対応還元 / UIA 新設+全回帰 | ✅ 完了 (2026-08-02) |
 | **Phase 27 — UI/UX 刷新+ジョブ投入模擬**                | WcuIcon+アイコン辞書(約50種) / ボタン 4 階層(Accent/Standard/Subtle/Danger) / WcuRibbon v1(タブ+グループ+大小ボタン) / CaeStudio リボン移行+フロー誘導(自動タブ切替/エンプティステート)+段階連動パネル+最小主義トランジション / IJobClient+SimulatedHpcClient(外部ジョブ投入模擬)+ジョブモニタ / Gallery Icons・Ribbon ページ / UIA 新シナリオ+全回帰                                                              | ✅ 完了 (2026-08-02) |

@@ -28,7 +28,7 @@ dotnet test  WpfCustomUI.slnx -c Debug
 
 ```bash
 dotnet run --project WpfCustomUI.Gallery
-dotnet run --project samples/CaeStudio.App
+dotnet run --project samples/CaeStudio/CaeStudio.App
 ```
 
 ## プロジェクト地図
@@ -42,7 +42,7 @@ dotnet run --project samples/CaeStudio.App
 | [WpfCustomUI.Gallery](WpfCustomUI.Gallery/) | コントロール一覧デモ（ドッグフード） |
 | [WpfCustomUI.Controls.Tests](WpfCustomUI.Controls.Tests/) | Controls の xUnit |
 | [WpfCustomUI.Viewport3D.Tests](WpfCustomUI.Viewport3D.Tests/) | Viewport3D の xUnit |
-| [samples/CaeStudio.*](samples/CaeStudio.App/) | 2D FEM サンプルアプリ（層別） |
+| [samples/CaeStudio/](samples/CaeStudio/CaeStudio.App/) | 2D FEM サンプルアプリ（層別） |
 
 ## 依存関係
 

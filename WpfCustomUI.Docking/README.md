@@ -36,4 +36,4 @@ Controls 本体はゼロ依存方針のため、外部ドックはここに隔�
 ## 関連
 
 - [WpfCustomUI.Controls](../WpfCustomUI.Controls/)
-- [samples/CaeStudio.App](../samples/CaeStudio.App/)
+- [samples/CaeStudio/CaeStudio.App](../samples/CaeStudio/CaeStudio.App/)

@@ -41,7 +41,7 @@ function Find-ById($scope, $automationId) {
 }
 
 $rootDir = 'd:\home\Programs\CSharpProjects\WpfCustomUI'
-$exe = Join-Path $rootDir 'samples\CaeStudio.App\bin\Debug\net10.0-windows\CaeStudio.exe'
+$exe = Join-Path $rootDir 'samples\CaeStudio\CaeStudio.App\bin\Debug\net10.0-windows\CaeStudio.exe'
 $outDir = Join-Path $rootDir '.dev\captures\phase27-m2'
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 

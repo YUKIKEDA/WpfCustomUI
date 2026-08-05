@@ -43,7 +43,7 @@ public static class M {
 }
 
 $rootDir = 'd:\home\Programs\CSharpProjects\WpfCustomUI'
-$exe = Join-Path $rootDir 'samples\CaeStudio.App\bin\Debug\net10.0-windows\CaeStudio.exe'
+$exe = Join-Path $rootDir 'samples\CaeStudio\CaeStudio.App\bin\Debug\net10.0-windows\CaeStudio.exe'
 $p = Start-Process -FilePath $exe -PassThru
 try {
     $deadline = (Get-Date).AddSeconds(40)

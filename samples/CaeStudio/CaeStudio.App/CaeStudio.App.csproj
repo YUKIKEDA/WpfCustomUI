@@ -20,10 +20,10 @@
   <ItemGroup>
     <ProjectReference Include="..\CaeStudio.Application\CaeStudio.Application.csproj" />
     <ProjectReference Include="..\CaeStudio.Infrastructure\CaeStudio.Infrastructure.csproj" />
-    <ProjectReference Include="..\..\WpfCustomUI.Charts\WpfCustomUI.Charts.csproj" />
-    <ProjectReference Include="..\..\WpfCustomUI.Controls\WpfCustomUI.Controls.csproj" />
-    <ProjectReference Include="..\..\WpfCustomUI.Docking\WpfCustomUI.Docking.csproj" />
-    <ProjectReference Include="..\..\WpfCustomUI.Viewport3D\WpfCustomUI.Viewport3D.csproj" />
+    <ProjectReference Include="..\..\..\WpfCustomUI.Charts\WpfCustomUI.Charts.csproj" />
+    <ProjectReference Include="..\..\..\WpfCustomUI.Controls\WpfCustomUI.Controls.csproj" />
+    <ProjectReference Include="..\..\..\WpfCustomUI.Docking\WpfCustomUI.Docking.csproj" />
+    <ProjectReference Include="..\..\..\WpfCustomUI.Viewport3D\WpfCustomUI.Viewport3D.csproj" />
   </ItemGroup>
 
 </Project>

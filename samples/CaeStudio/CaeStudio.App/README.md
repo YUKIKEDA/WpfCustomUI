@@ -22,7 +22,7 @@ UI／ジョブ方針の詳細は [`.dev/spec.md`](../../.dev/spec.md) Phase 26�
 ## 実行
 
 ```bash
-dotnet run --project samples/CaeStudio.App
+dotnet run --project samples/CaeStudio/CaeStudio.App
 ```
 
 UIA 回帰の入口: [`.dev/scripts/verify-caestudio.ps1`](../../.dev/scripts/verify-caestudio.ps1)
